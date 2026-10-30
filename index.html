@@ -52,6 +52,7 @@ button:hover{background:var(--hover)}
 #wl li{display:grid;grid-template-columns:1fr auto auto;gap:0 8px;align-items:center;padding:8px 12px;
   cursor:pointer;border-left:2px solid transparent}
 #wl li:hover{background:var(--hover)}
+#wl li.grp{display:block;cursor:default;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;padding:12px 12px 4px;background:none}
 #wl li.on{background:var(--hover);border-left-color:var(--accent)}
 #wl .n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #wl .s{color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -103,6 +104,8 @@ button:hover{background:var(--hover)}
   #wl li.on{border-bottom-color:var(--accent)}
   #wl .s,#wl .x{display:none}
   #wl .p,#wl .c{text-align:left}
+  #wl li.grp{display:flex;align-items:center;padding:0 6px 0 12px;border-left:1px solid var(--line);font-size:10px}
+  #wl li.grp:first-child{border-left:0}
   .sh{padding:6px 10px}
   .grid{grid-template-columns:1fr}
 }
@@ -124,7 +127,7 @@ button:hover{background:var(--hover)}
   </header>
   <main class="layout">
     <aside class="watch">
-      <div class="wh">Watchlist</div>
+      
       <ul id="wl"></ul>
     </aside>
     <section class="stage">
@@ -186,10 +189,36 @@ const IND = [
 const IND_BY = Object.fromEntries(IND.map(i => [i[0], i]));
 
 const DEFAULT = {
+  v: 2,
   watch: [
-    {k:'tv', s:'BITSTAMP:BTCUSD', n:'BTC/USD', x:'Bitstamp'},
-    {k:'tv', s:'BINANCE:ETHUSDT', n:'ETH/USDT', x:'Binance'},
-    {k:'tv', s:'BINANCE:SOLUSDT', n:'SOL/USDT', x:'Binance'},
+    {k:'tv', s:'CRYPTOCAP:USDT.D', n:'USDT.D', x:'USDT dominance', g:'Market'},
+    {k:'tv', s:'BITSTAMP:BTCUSD', n:'BTC/USD', x:'Bitstamp', g:'Market'},
+    {k:'tv', s:'CRYPTOCAP:BTC.D', n:'BTC.D', x:'BTC dominance', g:'Market'},
+    {k:'tv', s:'CRYPTOCAP:TOTAL3', n:'TOTAL3', x:'Market cap ex BTC/ETH', g:'Market'},
+    {k:'tv', s:'CRYPTOCAP:TOTAL', n:'TOTAL', x:'Crypto market cap', g:'Market'},
+    {k:'tv', s:'CAPITALCOM:DXY', n:'DXY', x:'Dollar index', g:'Market'},
+    {k:'tv', s:'RUS:BR1!', n:'BR1!', x:'Brent oil futures', g:'Market'},
+    {k:'tv', s:'OANDA:SPX500USD', n:'SP500', x:'S&P 500', g:'Market'},
+    {k:'tv', s:'BINANCE:PENGUUSDT', n:'PENGU/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:ZROUSDT', n:'ZRO/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:SOLUSDT', n:'SOL/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:ENAUSDT', n:'ENA/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:APTUSDT', n:'APT/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:PEPEUSDT', n:'PEPE/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:PYTHUSDT', n:'PYTH/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:SEIUSDT', n:'SEI/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:FILUSDT', n:'FIL/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:CFXUSDT', n:'CFX/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:AVAXUSDT', n:'AVAX/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:XRPUSDT', n:'XRP/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:LTCUSDT', n:'LTC/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:SUIUSDT', n:'SUI/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:ADAUSDT', n:'ADA/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:WALUSDT', n:'WAL/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:TAOUSDT', n:'TAO/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:WLDUSDT', n:'WLD/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:LINKUSDT', n:'LINK/USDT', x:'Binance', g:'My tokens'},
+    {k:'tv', s:'BINANCE:FETUSDT', n:'FET/USDT', x:'Binance', g:'My tokens'},
   ],
   cur: null, tf: 'W',
   ind: ['sma200','sma50','ema50','sma730'],
@@ -208,7 +237,13 @@ function valid(it){ return it && (it.k === 'tv' ? typeof it.s === 'string' : (ty
 function load(){
   let s = null;
   try { s = JSON.parse(localStorage.getItem(LS)); } catch {}
+  const old = s && !(s.v >= 2) ? s.watch : null;
   s = Object.assign(structuredClone(DEFAULT), s || {});
+  if (old) {
+    s.v = 2; s.watch = structuredClone(DEFAULT.watch);
+    const have = new Set(s.watch.map(idOf));
+    for (const it of old) if (valid(it) && !have.has(idOf(it))) s.watch.push(it);
+  }
   // A shared link (#d=...) brings its watchlist and indicators with it.
   const m = location.hash.match(/[#&]d=([\w-]+)/);
   if (m) {
@@ -226,7 +261,7 @@ function load(){
   if (!HEX.test(s.up)) s.up = DEFAULT.up;
   if (!HEX.test(s.down)) s.down = DEFAULT.down;
   s.watch = s.watch.filter(valid);
-  if (!valid(s.cur)) s.cur = s.watch[0] || DEFAULT.watch[0];
+  if (!valid(s.cur)) s.cur = s.watch.find(w => w.s === 'BITSTAMP:BTCUSD') || s.watch[0] || DEFAULT.watch[1];
   return s;
 }
 function shareHash(){ return '#d=' + b64e({w:S.watch, i:S.ind, c:S.cur, t:S.tf}); }
@@ -249,6 +284,11 @@ function fmtUsd(n){
   if (n >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
   if (n >= 1e3) return '$' + (n/1e3).toFixed(1) + 'K';
   return '$' + n.toFixed(0);
+}
+function fmtQ(q){
+  if (q.f === 'pct') return Number(q.p).toFixed(2) + '%';
+  if (q.f === 'cap') { const n = Number(q.p); return '$' + (n >= 1e12 ? (n/1e12).toFixed(2) + 'T' : (n/1e9).toFixed(1) + 'B'); }
+  return fmtP(q.p);
 }
 const shortAddr = a => a && a.length > 12 ? a.slice(0, 5) + '…' + a.slice(-4) : (a || '');
 function chgEl(c){
@@ -305,7 +345,7 @@ function renderHead(){
   $('#sub').textContent = it.k === 'tv' ? (it.x || it.s.split(':')[0]) : [it.chainName || it.c, it.dex].filter(Boolean).join(' · ');
   const q = prices[idOf(it)];
   const pr = $('#price'); pr.textContent = '';
-  if (q) { pr.append(fmtP(q.p) + ' '); pr.appendChild(chgEl(q.c)); }
+  if (q) { pr.append(fmtQ(q) + ' '); pr.appendChild(chgEl(q.c)); }
   const inW = S.watch.some(w => idOf(w) === idOf(it));
   $('#star').textContent = inW ? '★ Watching' : '☆ Add to watchlist';
 }
@@ -320,14 +360,17 @@ function renderWatch(){
   const ul = $('#wl'); ul.textContent = '';
   if (!S.watch.length) { ul.appendChild(el('li','empty','Search a token and tap ☆ to add it.')); return; }
   const cur = idOf(S.cur);
+  let lastG = null;
   for (const it of S.watch) {
+    const g = it.g || 'Added';
+    if (g !== lastG) { ul.appendChild(el('li','grp',g)); lastG = g; }
     const li = el('li'); if (idOf(it) === cur) li.classList.add('on');
     const left = el('div');
     left.appendChild(el('div','n',it.n));
     left.appendChild(el('div','s', it.k === 'tv' ? (it.x || it.s.split(':')[0]) : (it.chainName || it.c)));
     const q = prices[idOf(it)];
     const right = el('div');
-    right.appendChild(el('div','p', q ? fmtP(q.p) : ''));
+    right.appendChild(el('div','p', q ? fmtQ(q) : ''));
     right.appendChild(q ? chgEl(q.c) : el('span','c'));
     const x = el('button','x','×'); x.title = 'Remove';
     x.onclick = e => { e.stopPropagation(); S.watch = S.watch.filter(w => idOf(w) !== idOf(it)); save(); renderWatch(); renderHead(); };
