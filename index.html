@@ -592,15 +592,37 @@ function toast(msg, ms = 3200){ const t = $('#toast'); t.textContent = msg; t.hi
 const MACRO_IC = {'USDT.D':['#26a17b','₮'], 'BTC.D':['#f7931a','₿'], 'TOTAL':['#2962ff','Σ'], 'TOTAL2':['#2962ff','Σ'], 'TOTAL3':['#2962ff','Σ'], 'DXY':['#2e7d32','$'], 'BR1!':['#455a64','B'], 'SP500':['#c62828','S']};
 function baseOf(it){ if (it.k === 'dex') return it.n.split('/')[0];
   const sym = it.s.split(':')[1] || ''; return sym.replace(/(USDT|USDC|FDUSD|USD|BTC|ETH)$/, '') || sym; }
+const TVLOGO = 'https://s3-symbol-logo.tradingview.com/';
+const LOGO_FIX = {   // symbols whose logo isn't at the usual address
+  'USDT.D': TVLOGO + 'crypto/XTVCUSDT--big.svg', 'BTC.D': TVLOGO + 'crypto/XTVCBTC--big.svg',
+  'TOTAL': TVLOGO + 'crypto-total-market-cap--big.svg', 'TOTAL3': TVLOGO + 'crypto-total-market-cap--big.svg',
+  'BR1!': TVLOGO + 'crude-oil--big.svg',
+  'DXY': TVLOGO + 'indices/u-s-dollar-index--big.svg', 'SP500': TVLOGO + 'indices/s-and-p-500--big.svg',
+  'WAL': 'https://coin-images.coingecko.com/coins/images/54914/large/Walrus_Token_Full_Color_200x200.png',
+};
+function logoUrls(it, b){
+  if (LOGO_FIX[it.n]) return [LOGO_FIX[it.n]];
+  if (LOGO_FIX[b]) return [LOGO_FIX[b]];
+  const out = [];
+  if (it.img) out.push(it.img);
+  if (/^[A-Z0-9]{2,10}$/.test(b)) out.push(TVLOGO + 'crypto/XTVC' + b + '--big.svg', `https://assets.coincap.io/assets/icons/${b.toLowerCase()}@2x.png`);
+  return out;
+}
 function iconEl(it){
   const box = h('span', {class:'ic'});
   const mac = MACRO_IC[it.n];
-  if (mac){ box.style.background = mac[0]; box.textContent = mac[1]; return box; }
+  if (mac){ box.style.background = mac[0]; box.textContent = mac[1]; }
+  if (mac && !LOGO_FIX[it.n]) return box;
   const b = baseOf(it);
-  let hue = 0; for (const ch of b) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
-  box.style.background = `hsl(${hue} 40% 36%)`; box.textContent = b.slice(0, 1);
-  const src = it.img || (it.k === 'tv' && /^[A-Z0-9]{2,10}$/.test(b) ? `https://assets.coincap.io/assets/icons/${b.toLowerCase()}@2x.png` : null);
-  if (src && /^https:\/\//.test(src)){ const img = h('img', {alt:'', referrerpolicy:'no-referrer'}); img.onload = () => { box.textContent = ''; box.style.background = '#2a2e39'; box.append(img); }; img.src = src; }
+  if (!mac) { let hue = 0; for (const ch of b) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+    box.style.background = `hsl(${hue} 40% 36%)`; box.textContent = b.slice(0, 1); }
+  const srcs = logoUrls(it, b).filter(u => /^https:\/\//.test(u));
+  if (srcs.length){
+    const img = h('img', {alt:'', referrerpolicy:'no-referrer'}); let n = 0;
+    img.onload = () => { box.textContent = ''; box.style.background = '#fff'; box.append(img); };
+    img.onerror = () => { if (++n < srcs.length) img.src = srcs[n]; };   // try the next logo source
+    img.src = srcs[0];
+  }
   return box;
 }
 
