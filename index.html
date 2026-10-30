@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Charts</title>
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d12'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%233d8bfd' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0d12; --panel:#10131a; --line:#1e2330; --text:#e6e9ef; --dim:#8a93a6;
+  --accent:#3d8bfd; --up:#2ebd85; --down:#f0616d; --hover:#171b25;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif}
+button{font:inherit;color:inherit;background:none;border:1px solid var(--line);border-radius:7px;
+  padding:6px 10px;cursor:pointer;white-space:nowrap}
+button:hover{background:var(--hover)}
+.app{display:flex;flex-direction:column;height:100dvh}
+
+/* top bar */
+.bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{font-weight:700;letter-spacing:.3px;display:flex;align-items:center;gap:7px}
+.brand i{width:9px;height:9px;border-radius:50%;background:var(--accent);display:inline-block}
+.search{position:relative;flex:1 1 320px;min-width:200px}
+.search input{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);
+  border-radius:8px;padding:8px 11px;font:inherit;outline:none}
+.search input:focus{border-color:var(--accent)}
+.results{position:absolute;z-index:50;left:0;right:0;top:calc(100% + 4px);background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;max-height:60vh;overflow:auto;box-shadow:0 12px 30px #0008}
+.res{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--line)}
+.res:last-child{border-bottom:0}
+.res:hover,.res.sel{background:var(--hover)}
+.res b{font-weight:600}
+.res .m{color:var(--dim);font-size:12px}
+.res .r{text-align:right}
+.tf{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.tf button{border:0;border-radius:0;padding:6px 9px;color:var(--dim)}
+.tf button.on{color:var(--text);background:var(--hover)}
+.tools{display:flex;gap:6px}
+
+/* layout */
+.layout{flex:1;display:grid;grid-template-columns:250px 1fr;min-height:0}
+.watch{border-right:1px solid var(--line);overflow:auto;min-height:0}
+.wh{padding:10px 12px 6px;color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.6px}
+#wl{list-style:none;margin:0;padding:0}
+#wl li{display:grid;grid-template-columns:1fr auto auto;gap:0 8px;align-items:center;padding:8px 12px;
+  cursor:pointer;border-left:2px solid transparent}
+#wl li:hover{background:var(--hover)}
+#wl li.on{background:var(--hover);border-left-color:var(--accent)}
+#wl .n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#wl .s{color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#wl .p{text-align:right;font-variant-numeric:tabular-nums}
+#wl .c{font-size:12px;text-align:right}
+#wl .x{border:0;padding:2px 6px;color:var(--dim);opacity:0}
+#wl li:hover .x{opacity:1}
+.empty{padding:12px;color:var(--dim);font-size:13px}
+.up{color:var(--up)} .down{color:var(--down)}
+
+.stage{display:flex;flex-direction:column;min-width:0;min-height:0}
+.sh{display:flex;align-items:baseline;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sh .t{font-weight:700;font-size:16px}
+.sh .sub{color:var(--dim);font-size:12px}
+.sh .pr{font-variant-numeric:tabular-nums}
+.sh .sp{flex:1}
+#chart{flex:1;min-height:0;position:relative}
+#chart iframe{border:0;width:100%;height:100%;display:block}
+
+/* indicators sheet */
+.scrim{position:fixed;inset:0;background:#0009;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px}
+.sheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(460px,100%);max-height:85vh;overflow:auto;padding:16px}
+.sheet h3{margin:0 0 4px;font-size:16px}
+.sheet p{margin:0 0 12px;color:var(--dim);font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
+.grid label{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer}
+.grid input{accent-color:var(--accent);width:16px;height:16px}
+.colors{display:flex;gap:16px;align-items:center;margin-top:6px}
+.colors label{display:flex;align-items:center;gap:8px}
+.colors input{width:38px;height:28px;border:1px solid var(--line);border-radius:6px;background:none;padding:0;cursor:pointer}
+.row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.primary:hover{background:#2f7ae8}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);
+  padding:9px 14px;border-radius:8px;z-index:90;max-width:calc(100% - 32px);word-break:break-all;font-size:13px}
+
+/* phone */
+@media (max-width:820px){
+  .bar{padding:8px 10px;gap:8px}
+  .brand{display:none}
+  .search{flex:1 1 100%;order:-1}
+  .tf{flex:1;overflow-x:auto}
+  .tf button{flex:1;padding:6px 4px}
+  .layout{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .watch{border-right:0;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+  .wh{display:none}
+  #wl{display:flex}
+  #wl li{grid-template-columns:auto;border-left:0;border-bottom:2px solid transparent;padding:7px 12px;min-width:max-content}
+  #wl li.on{border-bottom-color:var(--accent)}
+  #wl .s,#wl .x{display:none}
+  #wl .p,#wl .c{text-align:left}
+  .sh{padding:6px 10px}
+  .grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand"><i></i>charts</div>
+    <div class="search">
+      <input id="q" placeholder="Search any token, ticker, or paste a contract / DexScreener link" autocomplete="off" spellcheck="false">
+      <div id="results" class="results" hidden></div>
+    </div>
+    <div class="tf" id="tf"></div>
+    <div class="tools">
+      <button id="indBtn">Indicators</button>
+      <button id="linkBtn" title="Copy a link that opens this watchlist on any device">Sync link</button>
+    </div>
+  </header>
+  <main class="layout">
+    <aside class="watch">
+      <div class="wh">Watchlist</div>
+      <ul id="wl"></ul>
+    </aside>
+    <section class="stage">
+      <div class="sh">
+        <span class="t" id="title"></span>
+        <span class="pr" id="price"></span>
+        <span class="sub" id="sub"></span>
+        <span class="sp"></span>
+        <button id="star"></button>
+      </div>
+      <div id="chart"></div>
+    </section>
+  </main>
+</div>
+<div id="indScrim" class="scrim" hidden>
+  <div class="sheet">
+    <h3>Indicators &amp; candles</h3>
+    <p>Loaded automatically on exchange charts (BTC, ETH, stocks…). Every other TradingView indicator is under <b>Indicators</b> inside the chart. On DEX token charts use the <b>ƒx</b> button inside the chart.</p>
+    <div class="grid" id="indGrid"></div>
+    <h3 style="margin-top:16px">Candles</h3>
+    <div class="colors">
+      <label>Up <input type="color" id="cUp"></label>
+      <label>Down <input type="color" id="cDown"></label>
+      <button id="cReset" type="button">Reset</button>
+    </div>
+    <div class="row"><button id="indCancel">Cancel</button><button class="primary" id="indApply">Apply</button></div>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+const TF = [['1','1m'],['5','5m'],['15','15m'],['60','1h'],['240','4h'],['D','1D'],['W','1W'],['M','1M']];
+const DS_TF = {'1':'1','5':'5','15':'15','60':'60','240':'240','D':'1D','W':'1W','M':'1W'};
+
+// Built-in TradingView studies. Values are tv.js study configs.
+const IND = [
+  ['sma200','SMA 200',{id:'MASimple@tv-basicstudies',inputs:{length:200}}],
+  ['sma50','SMA 50',{id:'MASimple@tv-basicstudies',inputs:{length:50}}],
+  ['ema50','EMA 50',{id:'MAExp@tv-basicstudies',inputs:{length:50}}],
+  ['sma730','SMA 730',{id:'MASimple@tv-basicstudies',inputs:{length:730}}],
+  ['ema21','EMA 21',{id:'MAExp@tv-basicstudies',inputs:{length:21}}],
+  ['ema200','EMA 200',{id:'MAExp@tv-basicstudies',inputs:{length:200}}],
+  ['bb','Bollinger Bands',{id:'BB@tv-basicstudies'}],
+  ['vwap','VWAP',{id:'VWAP@tv-basicstudies'}],
+  ['ichi','Ichimoku Cloud',{id:'IchimokuCloud@tv-basicstudies'}],
+  ['pivots','Pivot Points',{id:'PivotPointsStandard@tv-basicstudies'}],
+  ['rsi','RSI',{id:'RSI@tv-basicstudies'}],
+  ['macd','MACD',{id:'MACD@tv-basicstudies'}],
+  ['stochrsi','Stoch RSI',{id:'StochasticRSI@tv-basicstudies'}],
+  ['atr','ATR',{id:'ATR@tv-basicstudies'}],
+  ['mfi','Money Flow (MFI)',{id:'MF@tv-basicstudies'}],
+  ['m2','US M2 money supply',{id:'Compare@tv-basicstudies',inputs:{source:'close',symbol:'ECONOMICS:USM2'}}],
+];
+const IND_BY = Object.fromEntries(IND.map(i => [i[0], i]));
+
+const DEFAULT = {
+  watch: [
+    {k:'tv', s:'BITSTAMP:BTCUSD', n:'BTC/USD', x:'Bitstamp'},
+    {k:'tv', s:'BINANCE:ETHUSDT', n:'ETH/USDT', x:'Binance'},
+    {k:'tv', s:'BINANCE:SOLUSDT', n:'SOL/USDT', x:'Binance'},
+  ],
+  cur: null, tf: 'W',
+  ind: ['sma200','sma50','ema50','sma730'],
+  up: '#f2f2ee', down: '#3b78b8',
+};
+const HEX = /^#[0-9a-f]{6}$/i;
+
+const idOf = it => it.k === 'tv' ? 'tv:' + it.s : 'dex:' + it.c + ':' + it.p;
+const LS = 'charts.v1';
+let S;
+
+function b64e(o){ return btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function b64d(s){ s = s.replace(/-/g,'+').replace(/_/g,'/'); return JSON.parse(decodeURIComponent(escape(atob(s)))); }
+function valid(it){ return it && (it.k === 'tv' ? typeof it.s === 'string' : (typeof it.c === 'string' && typeof it.p === 'string')) && typeof it.n === 'string'; }
+
+function load(){
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(LS)); } catch {}
+  s = Object.assign(structuredClone(DEFAULT), s || {});
+  // A shared link (#d=...) brings its watchlist and indicators with it.
+  const m = location.hash.match(/[#&]d=([\w-]+)/);
+  if (m) {
+    try {
+      const h = b64d(m[1]);
+      if (Array.isArray(h.w)) {
+        const have = new Set(s.watch.map(idOf));
+        for (const it of h.w.filter(valid)) if (!have.has(idOf(it))) s.watch.push(it);
+      }
+      if (Array.isArray(h.i)) s.ind = h.i.filter(k => IND_BY[k]);
+      if (valid(h.c)) s.cur = h.c;
+      if (h.t && DS_TF[h.t]) s.tf = h.t;
+    } catch {}
+  }
+  if (!HEX.test(s.up)) s.up = DEFAULT.up;
+  if (!HEX.test(s.down)) s.down = DEFAULT.down;
+  s.watch = s.watch.filter(valid);
+  if (!valid(s.cur)) s.cur = s.watch[0] || DEFAULT.watch[0];
+  return s;
+}
+function shareHash(){ return '#d=' + b64e({w:S.watch, i:S.ind, c:S.cur, t:S.tf}); }
+function save(){
+  try { localStorage.setItem(LS, JSON.stringify(S)); } catch {}
+  try { history.replaceState(null, '', shareHash()); } catch {}
+}
+
+// ---------- formatting ----------
+function fmtP(p){
+  p = Number(p); if (!isFinite(p)) return '';
+  if (p >= 1000) return '$' + p.toLocaleString('en-US',{maximumFractionDigits:2});
+  if (p >= 1) return '$' + p.toLocaleString('en-US',{maximumFractionDigits:4});
+  if (p >= 0.0001) return '$' + p.toPrecision(4);
+  return '$' + p.toPrecision(3);
+}
+function fmtUsd(n){
+  n = Number(n); if (!isFinite(n) || !n) return '';
+  if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return '$' + (n/1e3).toFixed(1) + 'K';
+  return '$' + n.toFixed(0);
+}
+const shortAddr = a => a && a.length > 12 ? a.slice(0, 5) + '…' + a.slice(-4) : (a || '');
+function chgEl(c){
+  const s = el('span','c');
+  c = Number(c); if (!isFinite(c)) return s;
+  s.textContent = (c >= 0 ? '+' : '') + c.toFixed(2) + '%';
+  s.classList.add(c >= 0 ? 'up' : 'down');
+  return s;
+}
+
+// ---------- chart ----------
+let chartKey = '';
+function showChart(force){
+  const it = S.cur;
+  const key = idOf(it) + '|' + S.tf + '|' + S.ind.join(',') + '|' + S.up + S.down;
+  if (!force && key === chartKey) return;
+  chartKey = key;
+  const box = $('#chart'); box.textContent = '';
+  if (it.k === 'tv') {
+    const d = el('div'); d.id = 'tvc'; d.style.height = '100%'; box.appendChild(d);
+    if (!window.TradingView) { box.appendChild(el('div','empty','Chart library failed to load. Check your connection and reload.')); return; }
+    new TradingView.widget({
+      container_id: 'tvc', autosize: true, symbol: it.s, interval: S.tf,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Etc/UTC',
+      theme: 'dark', style: '1', locale: 'en', allow_symbol_change: true,
+      withdateranges: true, hide_side_toolbar: false, details: false, save_image: true,
+      studies: S.ind.map(k => IND_BY[k][2]),
+      toolbar_bg: '#0b0d12', backgroundColor: '#0b0d12', gridColor: 'rgba(30,35,48,0.6)',
+      overrides: {
+        'paneProperties.background': '#0b0d12',
+        'paneProperties.backgroundType': 'solid',
+        'mainSeriesProperties.candleStyle.upColor': S.up,
+        'mainSeriesProperties.candleStyle.downColor': S.down,
+        'mainSeriesProperties.candleStyle.borderUpColor': S.up,
+        'mainSeriesProperties.candleStyle.borderDownColor': S.down,
+        'mainSeriesProperties.candleStyle.wickUpColor': S.up,
+        'mainSeriesProperties.candleStyle.wickDownColor': S.down,
+        'mainSeriesProperties.hollowCandleStyle.upColor': S.up,
+        'mainSeriesProperties.hollowCandleStyle.downColor': S.down,
+      },
+    });
+  } else {
+    const f = el('iframe');
+    f.title = it.n + ' chart';
+    f.allow = 'clipboard-write';
+    f.src = `https://dexscreener.com/${encodeURIComponent(it.c)}/${encodeURIComponent(it.p)}?embed=1&theme=dark&chartTheme=dark&trades=0&info=0&tabs=0&chartLeftToolbar=1&chartType=usd&interval=${DS_TF[S.tf]}`;
+    box.appendChild(f);
+  }
+}
+
+function renderHead(){
+  const it = S.cur;
+  $('#title').textContent = it.n;
+  $('#sub').textContent = it.k === 'tv' ? (it.x || it.s.split(':')[0]) : [it.chainName || it.c, it.dex].filter(Boolean).join(' · ');
+  const q = prices[idOf(it)];
+  const pr = $('#price'); pr.textContent = '';
+  if (q) { pr.append(fmtP(q.p) + ' '); pr.appendChild(chgEl(q.c)); }
+  const inW = S.watch.some(w => idOf(w) === idOf(it));
+  $('#star').textContent = inW ? '★ Watching' : '☆ Add to watchlist';
+}
+
+function select(it){
+  S.cur = it; save();
+  renderWatch(); renderHead(); showChart();
+}
+
+// ---------- watchlist ----------
+function renderWatch(){
+  const ul = $('#wl'); ul.textContent = '';
+  if (!S.watch.length) { ul.appendChild(el('li','empty','Search a token and tap ☆ to add it.')); return; }
+  const cur = idOf(S.cur);
+  for (const it of S.watch) {
+    const li = el('li'); if (idOf(it) === cur) li.classList.add('on');
+    const left = el('div');
+    left.appendChild(el('div','n',it.n));
+    left.appendChild(el('div','s', it.k === 'tv' ? (it.x || it.s.split(':')[0]) : (it.chainName || it.c)));
+    const q = prices[idOf(it)];
+    const right = el('div');
+    right.appendChild(el('div','p', q ? fmtP(q.p) : ''));
+    right.appendChild(q ? chgEl(q.c) : el('span','c'));
+    const x = el('button','x','×'); x.title = 'Remove';
+    x.onclick = e => { e.stopPropagation(); S.watch = S.watch.filter(w => idOf(w) !== idOf(it)); save(); renderWatch(); renderHead(); };
+    li.append(left, right, x);
+    li.onclick = () => select(it);
+    ul.appendChild(li);
+  }
+}
+
+// ---------- live prices ----------
+const prices = {};
+async function refreshPrices(){
+  const list = S.watch.slice();
+  if (!list.some(w => idOf(w) === idOf(S.cur))) list.push(S.cur);
+  const jobs = [];
+  const byChain = {};
+  for (const it of list) if (it.k === 'dex') (byChain[it.c] ||= []).push(it);
+  for (const [c, its] of Object.entries(byChain)) {
+    for (let i = 0; i < its.length; i += 30) {
+      const chunk = its.slice(i, i + 30);
+      jobs.push(fetch(`https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(c)}/${chunk.map(x => encodeURIComponent(x.p)).join(',')}`)
+        .then(r => r.json()).then(j => {
+          for (const p of (j.pairs || [])) {
+            const it = chunk.find(x => x.p.toLowerCase() === String(p.pairAddress).toLowerCase());
+            if (it) prices[idOf(it)] = {p: p.priceUsd, c: p.priceChange && p.priceChange.h24};
+          }
+        }).catch(() => {}));
+    }
+  }
+  // Binance-listed symbols get a live price from Binance's public market-data API.
+  for (const it of list) {
+    if (it.k !== 'tv') continue;
+    const [ex, sym] = it.s.split(':');
+    let bsym = null;
+    if (ex === 'BINANCE') bsym = sym;
+    else if (/^(BITSTAMP|COINBASE|KRAKEN|BYBIT|OKX|BITFINEX)$/.test(ex) && /USDT?$/.test(sym)) bsym = sym.replace(/USDT?$/, 'USDT');
+    if (!bsym || !/^[A-Z0-9]{2,20}$/.test(bsym)) continue;
+    jobs.push(fetch('https://data-api.binance.vision/api/v3/ticker/24hr?symbol=' + bsym)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j && j.lastPrice) prices[idOf(it)] = {p: j.lastPrice, c: j.priceChangePercent}; })
+      .catch(() => {}));
+  }
+  await Promise.all(jobs);
+  renderWatch(); renderHead();
+}
+
+// ---------- search ----------
+let selIdx = -1, lastRes = [], searchSeq = 0;
+const resBox = $('#results'), q = $('#q');
+const CHAIN_NAMES = {ethereum:'Ethereum',bsc:'BNB Chain',solana:'Solana',base:'Base',arbitrum:'Arbitrum',polygon:'Polygon',avalanche:'Avalanche',optimism:'Optimism',sui:'Sui',ton:'TON',tron:'Tron',hyperliquid:'Hyperliquid',unichain:'Unichain',abstract:'Abstract',sonic:'Sonic',blast:'Blast',linea:'Linea',zksync:'zkSync',mantle:'Mantle',pulsechain:'PulseChain',cronos:'Cronos'};
+const chainName = c => CHAIN_NAMES[c] || (c ? c[0].toUpperCase() + c.slice(1) : '');
+
+function tvGuess(text){
+  const t = text.trim().toUpperCase();
+  if (!/^[A-Z0-9!._:-]{1,30}$/.test(t) || /^0X[0-9A-F]{8,}/.test(t)) return null;
+  if (t.includes(':')) { const [ex, sym] = t.split(':'); if (!ex || !sym) return null; return {k:'tv', s:t, n:sym, x:ex[0] + ex.slice(1).toLowerCase()}; }
+  if (t.length > 12) return null;
+  const base = t.replace(/(USDT|USD)$/, '') || t;
+  return {k:'tv', s:'BINANCE:' + base + 'USDT', n:base + '/USDT', x:'Binance'};
+}
+
+function showResults(rows){
+  lastRes = rows; selIdx = rows.length ? 0 : -1;
+  resBox.textContent = '';
+  if (!rows.length) { resBox.appendChild(el('div','res', 'No results')); resBox.hidden = false; return; }
+  rows.forEach((r, i) => {
+    const d = el('div','res' + (i === selIdx ? ' sel' : ''));
+    const a = el('div'); a.appendChild(el('b', null, r.item.n)); a.appendChild(el('div','m', r.meta));
+    const b = el('div','r');
+    if (r.price) b.appendChild(el('div', null, fmtP(r.price)));
+    if (r.right) b.appendChild(el('div','m', r.right));
+    d.append(a, b);
+    d.onmousedown = e => { e.preventDefault(); pick(i); };
+    resBox.appendChild(d);
+  });
+  resBox.hidden = false;
+}
+function pick(i){
+  const r = lastRes[i]; if (!r) return;
+  resBox.hidden = true; q.value = ''; q.blur();
+  if (r.price) prices[idOf(r.item)] = {p: r.price, c: r.chg};
+  select(r.item);
+}
+
+async function doSearch(text){
+  const seq = ++searchSeq;
+  text = text.trim();
+  if (!text) { resBox.hidden = true; return; }
+  const rows = [];
+  // A pasted DexScreener link opens that pair directly.
+  const link = text.match(/dexscreener\.com\/([a-z0-9-]+)\/([A-Za-z0-9]+)/i);
+  let query = link ? link[2] : text;
+  const g = link ? null : tvGuess(text);
+  if (g) rows.push({item:g, meta:'Exchange chart · ' + g.s, right:'TradingView'});
+  try {
+    const j = await fetch('https://api.dexscreener.com/latest/dex/search?q=' + encodeURIComponent(query)).then(r => r.json());
+    if (seq !== searchSeq) return;
+    // Rank by 24h volume so dead pools with stale liquidity sink to the bottom.
+    const vol = x => (x.volume && x.volume.h24) || 0, liq = x => (x.liquidity && x.liquidity.usd) || 0;
+    const pairs = (j.pairs || []).sort((a, b) => (vol(b) - vol(a)) || (liq(b) - liq(a))).slice(0, 20);
+    for (const p of pairs) {
+      const n = (p.baseToken && p.baseToken.symbol || '?') + '/' + (p.quoteToken && p.quoteToken.symbol || '?');
+      const item = {k:'dex', c:p.chainId, p:p.pairAddress, n, chainName:chainName(p.chainId), dex:p.dexId};
+      const ch = p.priceChange && p.priceChange.h24;
+      rows.push({item, price:p.priceUsd, chg:ch,
+        meta: [(p.baseToken && p.baseToken.name), chainName(p.chainId), p.dexId, shortAddr(p.baseToken && p.baseToken.address)].filter(Boolean).join(' · '),
+        right: ['vol ' + (fmtUsd(vol(p)) || '0'), 'liq ' + (fmtUsd(liq(p)) || '?'), isFinite(ch) ? (ch >= 0 ? '+' : '') + Number(ch).toFixed(1) + '%' : ''].filter(Boolean).join(' · ')});
+    }
+  } catch {}
+  if (seq === searchSeq) showResults(rows);
+}
+
+let tmr;
+q.addEventListener('input', () => { clearTimeout(tmr); tmr = setTimeout(() => doSearch(q.value), 280); });
+q.addEventListener('focus', () => { if (q.value.trim() && lastRes.length) resBox.hidden = false; });
+q.addEventListener('blur', () => setTimeout(() => resBox.hidden = true, 120));
+q.addEventListener('keydown', e => {
+  const items = resBox.querySelectorAll('.res');
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); if (!lastRes.length) return;
+    selIdx = (selIdx + (e.key === 'ArrowDown' ? 1 : -1) + lastRes.length) % lastRes.length;
+    items.forEach((x, i) => x.classList.toggle('sel', i === selIdx));
+    items[selIdx] && items[selIdx].scrollIntoView({block:'nearest'});
+  } else if (e.key === 'Enter') { clearTimeout(tmr); if (lastRes.length && selIdx >= 0) pick(selIdx); else doSearch(q.value); }
+  else if (e.key === 'Escape') { resBox.hidden = true; q.blur(); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
+});
+
+// ---------- timeframes ----------
+function renderTf(){
+  const box = $('#tf'); box.textContent = '';
+  for (const [v, l] of TF) {
+    const b = el('button', v === S.tf ? 'on' : '', l);
+    b.onclick = () => { S.tf = v; save(); renderTf(); showChart(); };
+    box.appendChild(b);
+  }
+}
+
+// ---------- indicators sheet ----------
+const scrim = $('#indScrim');
+$('#indBtn').onclick = () => {
+  const g = $('#indGrid'); g.textContent = '';
+  for (const [k, label] of IND) {
+    const l = el('label'); const c = el('input'); c.type = 'checkbox'; c.value = k; c.checked = S.ind.includes(k);
+    l.append(c, document.createTextNode(label)); g.appendChild(l);
+  }
+  $('#cUp').value = S.up; $('#cDown').value = S.down;
+  scrim.hidden = false;
+};
+$('#cReset').onclick = () => { $('#cUp').value = DEFAULT.up; $('#cDown').value = DEFAULT.down; };
+$('#indCancel').onclick = () => scrim.hidden = true;
+scrim.onclick = e => { if (e.target === scrim) scrim.hidden = true; };
+$('#indApply').onclick = () => {
+  S.ind = [...document.querySelectorAll('#indGrid input:checked')].map(c => c.value);
+  if (HEX.test($('#cUp').value)) S.up = $('#cUp').value;
+  if (HEX.test($('#cDown').value)) S.down = $('#cDown').value;
+  scrim.hidden = true; save(); showChart(true);
+};
+
+// ---------- star + share ----------
+$('#star').onclick = () => {
+  const id = idOf(S.cur);
+  if (S.watch.some(w => idOf(w) === id)) S.watch = S.watch.filter(w => idOf(w) !== id);
+  else S.watch.push(S.cur);
+  save(); renderWatch(); renderHead(); refreshPrices();
+};
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
+$('#linkBtn').onclick = async () => {
+  const url = location.href.split('#')[0] + shareHash();
+  try { await navigator.clipboard.writeText(url); toast('Link copied. Open it on your phone to get this watchlist there.'); }
+  catch { toast(url); }
+};
+
+// ---------- start ----------
+S = load(); save();
+renderTf(); renderWatch(); renderHead(); showChart();
+refreshPrices(); setInterval(() => { if (!document.hidden) refreshPrices(); }, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPrices(); });
+})();
+</script>
+</body>
+</html>
