@@ -296,6 +296,22 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
 .menu button{display:flex;align-items:center;width:100%;height:32px;text-align:left;padding:0 12px;border-radius:5px;color:var(--t1)}
 .menu button:hover{background:var(--hover)}
 .menu button.on{color:var(--accent2)}
+.amenu{min-width:250px;padding:6px}
+.amenu .am-main{height:38px;gap:10px;color:var(--t1)}
+.amenu .am-main b{font-weight:600}.amenu .am-main small{margin-left:auto;color:var(--faint);font-size:11px}
+.amenu .sw{width:30px;height:17px;border-radius:9px;background:var(--line2);position:relative;flex:none;transition:background .15s}
+.amenu .sw i{position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#c9ccd3;transition:left .15s}
+.amenu .sw.on{background:#2962ff}.amenu .sw.on i{left:15px;background:#fff}
+.amenu .am-s{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;padding:8px 12px 4px;border-top:1px solid var(--line);margin-top:4px}
+.amenu .am-r{gap:10px;height:31px;color:var(--t1)}
+.amenu .am-r.dim{opacity:.55}
+.amenu .am-r i{width:10px;height:10px;border-radius:2px;flex:none}
+.amenu .cb{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--t3);display:flex;align-items:center;justify-content:center;flex:none}
+.amenu .cb.on{background:#2962ff;border-color:#2962ff;color:#fff}
+.amenu .cb svg{width:12px;height:12px;stroke-width:3}
+.amenu .am-f{display:flex;gap:6px;padding:6px 6px 2px;border-top:1px solid var(--line);margin-top:4px}
+.amenu .am-f button{flex:1;justify-content:center;height:28px;border:1px solid var(--line2);font-size:12px;color:var(--t2)}
+.ai-h .ai-g{margin-left:auto}.ai-h .ai-g + button{margin-left:0}
 
 /* phone */
 @media (max-width:820px){
@@ -825,6 +841,7 @@ function cleanMeta(m){
   if (m.autoCat.ms === undefined) m.autoCat.ms = true;
   if (!m.autoClean) { m.autoClean = 1; }
   if (!m.autoOld) { m.autoCat = {buy:true, tp:true, lv:true, deep:true, acc:false, fib:true, tl:true, ms:true, pat:true}; m.autoOld = 1; }   // user wants the full old drawing back
+  if (m.autoCat.bz === undefined) m.autoCat.bz = true;
   m.alerts = (Array.isArray(m.alerts) ? m.alerts : []).filter(a => a && validItem(a.it) && a.price > 0);
   // old default line colours clashed with the blue candles: move them to the new palette
   const OLD = {'#2962ff':'#f0e442', '#ff9800':'#cc79a7', '#e040fb':'#e69f00', '#00bcd4':'#4fd1c5', '#4caf50':'#56b4e9', '#ffeb3b':'#f0e442'};
@@ -1754,7 +1771,7 @@ function drawBuy(b, last, atr, T, add, tagOff, pctAway, lv, fibZ, note){
     const conf = [lv.some(l => l.kind === 'sup' && l.v >= z.lo - atr * 0.3 && l.v <= z.hi + atr * 0.3) && 'support',
       fibZ && z.lo <= fibZ.hi && z.hi >= fibZ.lo && 'fib zone'].filter(Boolean);
     z.str = Math.round(Math.min(z.push, 5) / 5 * 35 + [25, 15, 5][z.tests] + Math.min(z.volR, 2) / 2 * 20 + Math.min(conf.length, 2) * 10);
-    autoDC = j ? 'deep' : 'buy';
+    autoDC = 'bz';
     add('autoZone', [P(z.i, z.hi), P(n - 1, z.lo)], AUTO.buy, {l:'Buy zone ' + (j + 1) + ' · ' + pctAway(z.hi) + ' · ' + strWord(z.str), s:z.str, a:0.2, box:1});
     autoInfo.push({c:AUTO.buy, t:'Buy zone ' + (j + 1) + ': ' + fmtNum(z.lo) + ' – ' + fmtNum(z.hi),
       d:'strength ' + z.str + '%, base of a ' + z.push.toFixed(1) + '× ATR rally, ' + (z.tests ? 'tested ' + z.tests + '×' : 'not retested yet') + (conf.length ? ', lines up with ' + conf.join(' + ') : '') + ', ' + pctAway(z.hi) + note});
@@ -1852,7 +1869,10 @@ const PAT_BULL = /bottom|Inverse|Bull flag|Falling wedge|Ascending triangle/, PA
 const targetAhead = (p, last) => isFinite(p.target) && p.target > 0 && !/Range|channel|Broadening/.test(p.name) && !(PAT_BEAR.test(p.name) && p.target >= last) && !(PAT_BULL.test(p.name) && p.target <= last);
 const targetHit = (p, last) => isFinite(p.target) && p.target > 0 && ((PAT_BEAR.test(p.name) && p.target >= last) || (PAT_BULL.test(p.name) && p.target <= last));
 let autoInfo = [], autoDefs = [], autoBias = '';
-const AUTO_CATS = [['buy','Buy/DCA'],['tp','Targets'],['lv','Levels'],['deep','More levels'],['acc','Accumulation'],['fib','Fib'],['tl','Trendlines'],['ms','Structure'],['pat','Patterns']];
+const AUTO_CATS = [
+  ['buy', 'Long-term DCA + stop', AUTO.dca], ['tp', 'Long-term targets', AUTO.tp], ['bz', 'Buy zones', AUTO.buy],
+  ['lv', 'Support and resistance', AUTO.sup], ['deep', 'Long-term levels', AUTO.sup], ['acc', 'Accumulation', AUTO.acc],
+  ['fib', 'Fib zone', AUTO.fib], ['tl', 'Trendlines', AUTO.trend], ['ms', 'Structure (HH, HL, BOS)', AUTO.trend], ['pat', 'Patterns', AUTO.pat]];
 // everything is always analysed (and listed in the panel); the chips only pick what gets drawn on the chart
 const AUTO_ALL = {lv:1, tl:1, ms:1, fib:1, pat:1, buy:1};
 let autoDC = 'lv';   // category of what is being drawn right now
@@ -2053,7 +2073,8 @@ function renderAutoInfo(){
   const pats = autoInfo.filter(x => x.pat || x.alert);
   const bias = autoBias ? h('em', {class:'ai-b ' + (autoBias === 'Uptrend' ? 'up' : 'down'), text:(autoBias === 'Uptrend' ? '▲ ' : '▼ ') + autoBias}) : null;
   box.append(h('div', {class:'ai-h'}, h('b', {text:'Auto'}), bias, h('span', {text: pats.map(p => p.t).join(' · ') || (autoBias ? '' : 'No clear trend')}),
-    h('button', {title:'Details and options', svg:svg(ICON.chev), onclick:() => box.classList.toggle('open')})));
+    h('button', {class:'ai-g', title:'Choose what to show', svg:svg(ICON.gear), onclick:e => autoMenu(e.currentTarget)}),
+    h('button', {title:'Details', svg:svg(ICON.chev), onclick:() => box.classList.toggle('open')})));
   const list = h('div', {class:'ai-l'});
   // the plan in plain words
   const S = autoSum, pl = h('div', {class:'ai-p'}), row = (k, v, cls) => pl.append(h('span', {text:k}), h('b', {class:cls || '', text:v}));
@@ -2062,9 +2083,7 @@ function renderAutoInfo(){
   if (S.stop) row('Stop', fmtLbl(S.stop) + '  (' + pctShort((S.stop - S.buy.avg) / S.buy.avg * 100) + ' from avg)', 'down');
   if (isFinite(S.rr)) row('Reward', '1 : ' + S.rr.toFixed(1) + (S.rr >= 2 ? '  good' : S.rr < 1 ? '  poor' : ''), S.rr >= 2 ? 'up' : S.rr < 1 ? 'down' : '');
   if (pl.childNodes.length) list.append(pl);
-  const chips = h('div', {class:'ai-c'});
-  for (const [k, l] of AUTO_CATS) chips.append(h('button', {class: M().autoCat[k] ? 'on' : '', text:l, onclick:() => { M().autoCat[k] = !M().autoCat[k]; touchMeta(); runAuto(); $('#autoInfo').classList.add('open'); }}));
-  list.append(h('div', {class:'ai-s', text:'Show on chart'}), chips);
+
   // details, grouped
   const GROUPS = [['Long-term DCA', x => x.dca], ['Long-term targets', x => x.tp], ['Buy zones', x => x.c === AUTO.buy || x.c === AUTO.acc], ['Support and resistance', x => x.lv && !x.deep],
     ['Long-term levels', x => x.deep], ['Trend and patterns', () => true]];
@@ -2213,6 +2232,26 @@ $('#kc').addEventListener('pointerup', ev => {
   const r = $('#kc').getBoundingClientRect(); showAutoTip(ev.clientX - r.left, ev.clientY - r.top, ev.clientX, ev.clientY);
   clearTimeout(hideAutoTip.t); hideAutoTip.t = setTimeout(hideAutoTip, 4500);
 });
+function autoMenu(anchor){
+  const old = $('#amenu'); if (old) { old.remove(); return; }
+  const m = h('div', {class:'menu amenu', id:'amenu'});
+  const paint = () => {
+    m.textContent = '';
+    m.append(h('button', {class:'am-main' + (M().auto ? ' on' : ''), onclick:() => { setAuto(!M().auto); paint(); }},
+      h('span', {class:'sw' + (M().auto ? ' on' : '')}, h('i')), h('b', {text:'Auto draw'}), h('small', {text:'Alt+A'})));
+    m.append(h('div', {class:'am-s', text:'Show on chart'}));
+    for (const [k, l, c] of AUTO_CATS) m.append(h('button', {class:'am-r' + (M().auto ? '' : ' dim'), onclick:() => {
+        M().autoCat[k] = !M().autoCat[k]; touchMeta(); if (!M().auto) setAuto(true); else runAuto(); paint(); }},
+      h('span', {class:'cb' + (M().autoCat[k] ? ' on' : ''), svg: M().autoCat[k] ? svg(ICON.check) : ''}), h('i', {style:'background:' + c}), h('span', {text:l})));
+    const all = on => { for (const [k] of AUTO_CATS) M().autoCat[k] = on; touchMeta(); if (on && !M().auto) setAuto(true); else runAuto(); paint(); };
+    m.append(h('div', {class:'am-f'}, h('button', {text:'Show all', onclick:() => all(true)}), h('button', {text:'Hide all', onclick:() => all(false)})));
+  };
+  paint(); document.body.append(m);
+  const r = anchor.getBoundingClientRect(), side = r.right + 8 + m.offsetWidth < innerWidth;
+  m.style.left = (side ? r.right + 8 : Math.max(8, r.right - m.offsetWidth)) + 'px';
+  m.style.top = Math.max(8, Math.min(innerHeight - m.offsetHeight - 8, side ? r.top : r.bottom + 6)) + 'px';
+  setTimeout(() => document.addEventListener('pointerdown', function off(e){ if (!m.contains(e.target) && !anchor.contains(e.target)) { m.remove(); document.removeEventListener('pointerdown', off); } }), 0);
+}
 function keepAuto(){
   const defs = autoDefs.slice();
   for (const d of defs) chart.createOverlay({name:d.name, groupId:'u', points:d.points, styles:d.styles, extendData:d.extendData, ...overlayCallbacks()});
@@ -2223,8 +2262,8 @@ function setAuto(on){ M().auto = on; touchMeta(); const b = $('.tool[data-auto]'
 function buildTools(){
   const box = $('#tools'); box.textContent = '';
   for (const [name, label] of TOOLS) {
-    if (name === 'segment') box.append(h('button', {class:'tool' + (M().auto ? ' on' : ''), 'data-auto':'1', title:'Auto draw: levels, trendlines, patterns (Alt+A)',
-      svg:svg('<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/>'), onclick:() => setAuto(!M().auto)}));
+    if (name === 'segment') box.append(h('button', {class:'tool' + (M().auto ? ' on' : ''), 'data-auto':'1', title:'Auto draw: choose what it shows (Alt+A turns it on/off)',
+      svg:svg('<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/>'), onclick:e => autoMenu(e.currentTarget)}));
     if (['segment','horizontalStraightLine','parallelStraightLine','brush','arrow'].includes(name)) box.append(h('hr'));
     box.append(h('button', {class:'tool' + (name === tool ? ' on' : ''), 'data-tool':name, title:label, svg:svg(ICON[name]), onclick:() => setTool(name)}));
   }
