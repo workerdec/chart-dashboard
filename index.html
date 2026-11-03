@@ -1645,6 +1645,7 @@ async function majorBars(it, fallback){
   if (b) { try { const j = await getJSON(`https://data-api.binance.vision/api/v3/klines?symbol=${b}&interval=1d&limit=1000`);
     bars = j.map(r => ({timestamp:+r[0], open:+r[1], high:+r[2], low:+r[3], close:+r[4]})); } catch {} }
   else if (okxInst(it)) { try { bars = await okxBars(okxInst(it), '1Dutc', 1000); } catch {} }
+  else if (it.k === 'dex') { try { bars = (await SRC.gecko(it, '1D')).rows; } catch {} }
   majorCache[key] = bars && bars.length > 60 ? bars : null;
   return majorCache[key] || fallback;
 }
@@ -1736,8 +1737,8 @@ function autoDca(last, cands){
     else cl.push({v:x.v, score:x.score, why:[x.why]});
   }
   cl.sort((a, d) => d.score - a.score);
-  const near = cl.find(c => c.v >= last * 0.8), pick = near ? [near] : [];   // first buy close to price when there is a level for it
-  for (const c of cl) { if (pick.length >= 4) break; if (c === near) continue; if (pick.some(p => Math.abs(p.v - c.v) / p.v < 0.06)) continue; pick.push(c); }
+  const near = cl.find(c => c.v >= last * 0.75), pick = near ? [near] : [];   // first buy close to price when there is a level for it
+  for (const c of cl) { if (pick.length >= 4) break; if (c === near) continue; if (pick.some(p => Math.abs(p.v - c.v) / p.v < 0.08)) continue; pick.push(c); }
   if (!pick.length) return null;
   pick.sort((a, c) => c.v - a.v);
   const W = {1:[100], 2:[40,60], 3:[25,35,40], 4:[15,20,30,35]}[pick.length];
@@ -1785,28 +1786,50 @@ function autoBoxAt(v, text, color, tEnd, add){
   for (const d of autoDefs) {
     if (d.name !== 'autoZone' || !d.extendData || !/^(R |S |Buy zone|Cycle|High)/.test(d.extendData.l || '')) continue;
     const a = d.points[0].value, b = d.points[1].value, lo = Math.min(a, b) * 0.99, hi = Math.max(a, b) * 1.01;
-    if (v >= lo && v <= hi) { d.extendData = {...d.extendData, l:d.extendData.l + ' · ' + text}; if (d.id) chart.overrideOverlay({id:d.id, extendData:d.extendData}); return; }
+    if (v >= lo && v <= hi) { d.extendData = {...d.extendData, l:d.extendData.l + ' · ' + (/[+−-]\d/.test(d.extendData.l) ? text.replace(/ [+−-][\d.]+%$/, '') : text)}; if (d.id) chart.overrideOverlay({id:d.id, extendData:d.extendData}); return; }
   }
   const all = chart.getDataList(), t0 = all.length ? all[Math.max(0, all.length - 30)].timestamp : tEnd;
   add('autoZone', [{timestamp:t0, value:v * 1.0025}, {timestamp:tEnd, value:v * 0.9975}], color, {l:text, box:1, a:0.16});
 }
 function drawTp(last, cands, tEnd, add, pctAway, tagOff, atr){
   const cl = [];
-  for (const x of cands.filter(x => x.v > last * 1.02 && x.v < Math.min(last * 5, last + atr * 25)).sort((a, c) => a.v - c.v)) {
+  for (const x of cands.filter(x => x.v > last * 1.15 && x.v < Math.min(last * 10, last + atr * 25)).sort((a, c) => a.v - c.v)) {
     const k = cl.find(y => Math.abs(y.v - x.v) / y.v < 0.03);
     if (k) { k.v = (k.v * k.score + x.v * x.score) / (k.score + x.score); k.score += x.score; if (!k.why.includes(x.why)) k.why.push(x.why); }
     else cl.push({v:x.v, score:x.score - (x.v / last - 1) * 0.8, why:[x.why]});
   }
   const pick = [];
-  for (const c of cl.sort((a, d) => d.score - a.score)) { if (pick.length >= 3) break; if (pick.some(p => Math.abs(p.v - c.v) / p.v < 0.05)) continue; pick.push(c); }
+  for (const c of cl.sort((a, d) => d.score - a.score)) { if (pick.length >= 3) break; if (pick.some(p => Math.abs(p.v - c.v) / p.v < 0.1)) continue; pick.push(c); }
   if (!pick.length) return;
   pick.sort((a, c) => a.v - c.v);
   autoSum.tp = pick;
   if (autoPlan && autoPlan.avg > autoPlan.stop) { const rr = (pick[0].v - autoPlan.avg) / (autoPlan.avg - autoPlan.stop); autoSum.rr = rr;
     autoInfo.push({c:AUTO.tp, t:'Risk / reward 1 : ' + rr.toFixed(1), d:'avg entry ' + fmtNum(autoPlan.avg) + ' → TP 1 ' + fmtNum(pick[0].v) + ', stop ' + fmtNum(autoPlan.stop) + (rr < 1 ? ' (less reward than risk)' : rr >= 2 ? ' (good)' : ''), tp:true}); }
   pick.forEach((s, j) => { autoDC = j < 2 ? 'tp' : 'deep'; if (M().autoCat[autoDC]) autoBoxAt(s.v, 'TP ' + (j + 1) + ' ' + pctAway(s.v), AUTO.tp, tEnd, add); });
-  autoInfo.push({c:AUTO.tp, t:'Targets: ' + pick.map((s, j) => 'TP' + (j + 1) + ' ' + pctAway(s.v)).join(', '), d:'take profit in steps', tp:true});
+  autoInfo.push({c:AUTO.tp, t:'Long-term targets: ' + pick.map((s, j) => 'TP' + (j + 1) + ' ' + pctAway(s.v)).join(', '), d:'from the daily chart, the same on every timeframe. Sell part at each one.', tp:true});
   pick.forEach((s, j) => autoInfo.push({c:AUTO.tp, t:'TP ' + (j + 1) + ' at ' + fmtNum(s.v), d:pctAway(s.v) + ' · ' + s.why.join(' + '), tp:true}));
+}
+// long-term (investing) levels from daily history: major levels, cycle low, 200-day / 50-week averages,
+// fib of the big cycle move, all-time high and extensions above it
+function autoLongCands(mb, last){
+  const n = mb.length, buy = [], up = []; if (n < 30) return {buy, up};
+  let hiI = 0; for (let i = 0; i < n; i++) if (mb[i].high > mb[hiI].high) hiI = i;
+  const ath = mb[hiI].high;
+  for (const l of autoMajor(mb, last, [])) (l.kind === 'sup' ? buy : up).push({v:l.v, score: l.cyc ? 2.5 : 1.6 + Math.min(l.touches, 5) * 0.35 + l.rate, why: l.cyc ? 'cycle low' : 'major ' + (l.kind === 'sup' ? 'support' : 'resistance')});
+  const sma = k => n >= k ? mb.slice(-k).reduce((s, x) => s + x.close, 0) / k : null;
+  const m200 = sma(200), m350 = sma(350);
+  if (m200) (m200 < last ? buy : up).push({v:m200, score:2.2, why:'200-day average'});
+  if (m350 && m350 < last) buy.push({v:m350, score:2.4, why:'50-week average'});
+  let preLo = 0; for (let i = 0; i <= hiI; i++) if (mb[i].low < mb[preLo].low) preLo = i;
+  const L = mb[preLo].low, R = ath - L;
+  if (R > 0) {
+    for (const [f, s] of [[0.5, 1.5], [0.618, 2], [0.786, 1.8]]) buy.push({v:ath - R * f, score:s, why:'fib ' + f + ' of the big move'});
+    if (ath > last * 1.05) up.push({v:ath, score:3, why:'all-time high'});
+    for (const [f, s] of [[1.272, 1.6], [1.618, 1.8]]) up.push({v:L + R * f, score:s, why:'fib ' + f + ' extension'});
+    let cl = hiI; for (let i = hiI; i < n; i++) if (mb[i].low < mb[cl].low) cl = i;
+    if (cl > hiI && last < ath * 0.7) { const D = ath - mb[cl].low; for (const [f, s] of [[0.382, 1.5], [0.5, 1.7], [0.618, 1.7]]) up.push({v:mb[cl].low + D * f, score:s, why:'fib ' + f + ' of the drop from the top'}); }
+  }
+  return {buy, up, days:n};
 }
 let autoPlan = null, autoSum = {};
 function drawDca(last, cands, tEnd, add, pctAway, tagOff, atr){
@@ -1815,13 +1838,13 @@ function drawDca(last, cands, tEnd, add, pctAway, tagOff, atr){
   autoDC = 'buy';
   d.steps.forEach((s, j) => autoBoxAt(s.v, 'DCA ' + (j + 1) + ' ' + s.w + '% ' + pctAway(s.v), AUTO.dca, tEnd, add));
   // stop-loss: just under the next level below the last buy, or a bit under the last buy if there is none close
-  const low = d.steps[d.steps.length - 1].v, gap = Math.max(0.04, (atr || 0) * 1.5 / last);
+  const low = d.steps[d.steps.length - 1].v, gap = 0.08;
   const under = cands.map(c => c.v).filter(v => v < low * 0.985 && v > low * 0.85).sort((a, c) => c - a)[0];
   const stop = under ? under * 0.985 : low * (1 - gap);
   autoPlan = {avg:d.avg, stop}; autoSum.buy = d; autoSum.stop = stop;
   if (M().autoCat.buy) { const all = chart.getDataList(), t0 = all.length ? all[Math.max(0, all.length - 30)].timestamp : tEnd;
     add('autoZone', [{timestamp:t0, value:stop * 1.002}, {timestamp:tEnd, value:stop * 0.998}], AUTO.res, {l:'Stop ' + fmtLbl(stop) + ' ' + pctAway(stop), box:1, a:0.1, stop:1}); }
-  autoInfo.push({c:AUTO.dca, t:'DCA plan: ' + d.steps.length + ' buy' + (d.steps.length > 1 ? 's' : '') + ', avg ' + fmtNum(d.avg), d:pctAway(d.avg) + ' from now' + (autoBias === 'Downtrend' ? ', trend is down so the lower buys are more likely to fill' : ''), dca:true});
+  autoInfo.push({c:AUTO.dca, t:'Long-term DCA plan: ' + d.steps.length + ' buy' + (d.steps.length > 1 ? 's' : '') + ', avg ' + fmtNum(d.avg), d:pctAway(d.avg) + ' from now, from the daily chart (same on every timeframe)' + (autoBias === 'Downtrend' ? ', trend is down so the lower buys are more likely to fill' : ''), dca:true});
   d.steps.forEach((s, j) => autoInfo.push({c:AUTO.dca, t:'DCA ' + (j + 1) + ' · ' + s.w + '% at ' + fmtNum(s.v), d:pctAway(s.v) + ' · ' + s.why.join(' + '), dca:true}));
   autoInfo.push({c:AUTO.res, t:'Stop-loss ' + fmtNum(stop), d:fmtPct((stop - d.avg) / d.avg * 100) + ' from your average entry' + (under ? ', just under the next support' : ''), dca:true, stopRow:true});
 }
@@ -1930,19 +1953,18 @@ function runAuto(){
     majorBars(it, all).then(mb => {
       if (seq !== autoSeq || !M().auto || mode !== 'kc') return;
       const maj = mb && mb.length >= 60 ? autoMajor(mb, last, allLv.map(l => l.v)) : [];
-      if (buyC) { for (const l of maj) if (l.kind === 'sup') buyC.push({v:l.v, score: l.cyc ? 2 : 2 + Math.min(l.touches, 5) * 0.3, why: l.cyc ? 'cycle low' : 'major support'});
-        drawDca(last, buyC, tEnd, add, pctAway, tagOff, atr);
-        const up = autoUpCands(b, last, allLv); for (const l of maj) if (l.kind === 'res') up.push({v:l.v, score:2 + Math.min(l.touches, 5) * 0.3, why:'major resistance'});
-        drawTp(last, up, tEnd, add, pctAway, tagOff, atr); }
-      if (!cat.lv) { renderAutoInfo(); return; }
       autoDC = 'deep';
-      for (const l of maj) {
+      for (const l of cat.lv ? maj : []) {
         const c = l.kind === 'res' ? AUTO.res : AUTO.sup, pc = fmtPct(l.dist * 100), w = l.v * 0.008;
         add('autoZone', [{timestamp:Math.max(l.first, t0), value:l.v + w}, {timestamp:all[all.length - 1].timestamp, value:l.v - w}], c,
           {l:(l.cyc ? 'Cycle low ' : l.kind === 'res' ? 'R ' : 'S ') + fmtLbl(l.v) + ' · ' + pctShort(l.dist * 100), s:l.str, a:0.09, off:tagOff(l.v)});
         autoInfo.push({c, t:(l.cyc ? 'Cycle low ' : l.kind === 'res' ? 'Major resistance ' : 'Major support ') + fmtNum(l.v),
           d:(l.cyc ? 'lowest price in ' + Math.round(mb.length / 30) + ' months' : l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%') + ', ' + pc, deep:true});
       }
+      // long-term DCA and targets come last so they can join a level already drawn at the same price
+      if (buyC) { const LT = autoLongCands(mb && mb.length >= 60 ? mb : all, last);
+        drawDca(last, LT.buy, tEnd, add, pctAway, tagOff, 0);
+        drawTp(last, LT.up, tEnd, add, pctAway, tagOff, Infinity); }
       renderAutoInfo();
     });
   }
@@ -1990,10 +2012,9 @@ async function autoThin(all, it){
     if (Math.max(hiI, loI) < n - 2) fibZ = {lo:Math.min(at(0.5), at(0.618)), hi:Math.max(at(0.5), at(0.618))}; }
   if (cat.buy !== false) {
     const c = drawBuy(b, last, atr, ts, add, tagOff, pctAway, near, fibZ, ' (' + used + ')');
-    for (const l of deep) if (l.kind === 'sup') c.push({v:l.v, score: l.cyc ? 2 : 2 + Math.min(l.touches, 5) * 0.3, why: l.cyc ? 'lowest so far' : 'major support'});
-    drawDca(last, c, tN, add, pctAway, tagOff, atr);
-    const up = autoUpCands(b, last, near); for (const l of deep) if (l.kind === 'res') up.push({v:l.v, score:2 + Math.min(l.touches, 5) * 0.3, why:'major resistance'});
-    drawTp(last, up, tN, add, pctAway, tagOff, autoAtrNow * 1.5 > atr ? autoAtrNow * 1.5 : atr);
+    const LT = autoLongCands(b, last);   // a new pair has no long history: use its whole life
+    drawDca(last, LT.buy, tN, add, pctAway, tagOff, 0);
+    drawTp(last, LT.up, tN, add, pctAway, tagOff, Infinity);
   }
   if (cat.lv) {
     // near levels plus deeper ones from the whole life of the pair
@@ -2036,8 +2057,8 @@ function renderAutoInfo(){
   const list = h('div', {class:'ai-l'});
   // the plan in plain words
   const S = autoSum, pl = h('div', {class:'ai-p'}), row = (k, v, cls) => pl.append(h('span', {text:k}), h('b', {class:cls || '', text:v}));
-  if (S.buy) row('Buy', S.buy.steps.map(s => fmtLbl(s.v)).join(' → ') + '  (avg ' + fmtLbl(S.buy.avg) + ')', 'up');
-  if (S.tp && S.tp.length) row('Sell', S.tp.map(s => fmtLbl(s.v)).join(' · '), 'tp');
+  if (S.buy) row('Long-term buy', S.buy.steps.map(s => fmtLbl(s.v)).join(' → ') + '  (avg ' + fmtLbl(S.buy.avg) + ')', 'up');
+  if (S.tp && S.tp.length) row('Long-term sell', S.tp.map(s => fmtLbl(s.v)).join(' · '), 'tp');
   if (S.stop) row('Stop', fmtLbl(S.stop) + '  (' + pctShort((S.stop - S.buy.avg) / S.buy.avg * 100) + ' from avg)', 'down');
   if (isFinite(S.rr)) row('Reward', '1 : ' + S.rr.toFixed(1) + (S.rr >= 2 ? '  good' : S.rr < 1 ? '  poor' : ''), S.rr >= 2 ? 'up' : S.rr < 1 ? 'down' : '');
   if (pl.childNodes.length) list.append(pl);
@@ -2045,7 +2066,7 @@ function renderAutoInfo(){
   for (const [k, l] of AUTO_CATS) chips.append(h('button', {class: M().autoCat[k] ? 'on' : '', text:l, onclick:() => { M().autoCat[k] = !M().autoCat[k]; touchMeta(); runAuto(); $('#autoInfo').classList.add('open'); }}));
   list.append(h('div', {class:'ai-s', text:'Show on chart'}), chips);
   // details, grouped
-  const GROUPS = [['Buy plan', x => x.dca], ['Targets', x => x.tp], ['Buy zones', x => x.c === AUTO.buy || x.c === AUTO.acc], ['Support and resistance', x => x.lv && !x.deep],
+  const GROUPS = [['Long-term DCA', x => x.dca], ['Long-term targets', x => x.tp], ['Buy zones', x => x.c === AUTO.buy || x.c === AUTO.acc], ['Support and resistance', x => x.lv && !x.deep],
     ['Long-term levels', x => x.deep], ['Trend and patterns', () => true]];
   const used = new Set();
   for (const [g, f] of GROUPS) {
@@ -2087,8 +2108,8 @@ const PAT_TIP = [
   ['Bear flag', 'A sharp drop (the pole) and then a small bounce. It often continues down by about the size of the pole.'],
 ];
 const patTip = l => { const r = PAT_TIP.find(([k]) => l.startsWith(k)); return r ? [l, r[1]] : null; };
-const DCA_TIP = 'DCA (dollar-cost averaging) step: a planned buy level. Instead of buying all at once, split your money over these steps. The % is the share of your budget for this step; lower steps get more.';
-const TP_TIP = 'Take profit: a level above price where it may stall (resistance, past top or Fib extension). A good place to sell part of your position.';
+const DCA_TIP = 'Long-term DCA step (from the daily chart, the same on every timeframe): a planned buy level for investing. Instead of buying all at once, split your money over these steps. The % is the share of your budget for this step; lower steps get more.';
+const TP_TIP = 'Long-term take profit (from the daily chart): a big level above price where it may stall, like a major resistance, the all-time high or a Fib extension of the cycle. A good place to sell part of your position.';
 function autoTip(d){
   const r = autoTip0(d); if (!r) return r;
   const l = (d.extendData && d.extendData.l) || '';
