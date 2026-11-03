@@ -109,6 +109,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
 .ai-l i{width:8px;height:8px;border-radius:2px}
 .ai-l small{color:var(--t3);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ai-l p{margin:6px 0 0;color:var(--t3);font-size:11px}
+.autoinfo.open .ai-l{max-height:min(62vh,560px);overflow-y:auto}
 .ai-c{display:flex;gap:4px;padding:8px 0 6px;flex-wrap:wrap}
 .ai-c button{height:22px;padding:0 6px;border-radius:5px;color:var(--t3);border:1px solid var(--line2);font-size:11px}
 .ai-c button.on{color:var(--accent2);background:var(--active);border-color:transparent}
@@ -1112,7 +1113,15 @@ function updateLegend(){
   const last = list[list.length - 1], dir = last.close >= last.open ? 'up' : 'down';
   if (dir !== lastDir) { lastDir = dir; chart.setStyles(chartStyles()); }
 }
-chart.subscribeAction('onCrosshairChange', c => { const n = c && typeof c.paneId === 'string' && typeof c.dataIndex === 'number' ? c.dataIndex : null; if (n !== hoverIdx) { hoverIdx = n; scheduleLegend(); } });
+// KLineChart 10.1 sends only x/y/paneId here (no dataIndex), so find the candle from x ourselves
+chart.subscribeAction('onCrosshairChange', c => {
+  let n = null;
+  if (c && typeof c.paneId === 'string') {
+    if (typeof c.dataIndex === 'number') n = c.dataIndex;
+    else if (typeof c.x === 'number') { const r = chart.convertFromPixel([{x:c.x, y:c.y || 0}], {paneId:c.paneId}); const d = Array.isArray(r) ? r[0] : r; if (d && typeof d.dataIndex === 'number') n = Math.max(0, Math.min(chart.getDataList().length - 1, d.dataIndex)); }
+  }
+  if (n !== hoverIdx) { hoverIdx = n; scheduleLegend(); }
+});
 chart.subscribeAction('onPaneDrag', () => positionLegend());
 chart.setFormatter({formatBigNumber: v => compact(v),
   formatExtendText: ({type, data}) => { if (type !== 'last_price' || mode !== 'kc' || !data) return ''; const list = chart.getDataList(); return list.length && data.timestamp === list[list.length - 1].timestamp ? countdown(barEnd(data.timestamp) - Date.now()) : ''; }});
@@ -1504,7 +1513,7 @@ function autoPatterns(b, piv, tol, sup, res, atr){
     if (Math.abs(m - c.v) < atr * 2) return;
     const target = top ? m - (c.v - m) : m + (m - c.v), done = top ? last < m : last > m;
     out.push({name: top ? 'Double top' : 'Double bottom', i:c.i, v:c.v, peaks:[a, c], top, neck:m, neckI:a.i, target: done ? target : NaN,
-      why: done ? 'broke neckline ' + fmtNum(m) + ', target ' + fmtNum(Math.max(0, target)) : 'confirms on a close ' + (top ? 'below ' : 'above ') + fmtNum(m)});
+      why: done ? 'broke neckline ' + fmtNum(m) + (target > 0 ? ', target ' + fmtNum(target) : '') : 'confirms on a close ' + (top ? 'below ' : 'above ') + fmtNum(m)});
   };
   two(H, L, true); two(L, H, false);
   // head and shoulders (and inverse) from the last three swings
@@ -1517,7 +1526,7 @@ function autoPatterns(b, piv, tol, sup, res, atr){
     const pick = arr => arr.reduce((x, y) => (top ? y.v < x.v : y.v > x.v) ? y : x);
     const A = pick(q1), B = pick(q2), neck = (A.v + B.v) / 2, target = top ? neck - (hd.v - neck) : neck + (neck - hd.v), done = top ? last < neck : last > neck;
     out.push({name: top ? 'Head and shoulders' : 'Inverse head and shoulders', i:hd.i, v:hd.v, top, shoulders:[l, hd, r], neckA:A, neckB:B, target: done ? target : NaN,
-      why: done ? 'broke neckline ' + fmtNum(neck) + ', target ' + fmtNum(Math.max(0, target)) : 'confirms on a close ' + (top ? 'below ' : 'above ') + fmtNum(neck)});
+      why: done ? 'broke neckline ' + fmtNum(neck) + (target > 0 ? ', target ' + fmtNum(target) : '') : 'confirms on a close ' + (top ? 'below ' : 'above ') + fmtNum(neck)});
   };
   hs(H, L, true); hs(L, H, false);
   // bull / bear flag: a sharp move (pole) then a tight pause that has not given back half of it
@@ -1537,14 +1546,56 @@ function autoPatterns(b, piv, tol, sup, res, atr){
   keep('Double top', 'Double bottom'); keep('Head and shoulders', 'Inverse head and shoulders');
   return out;
 }
+// major levels from long history (daily bars, ~2.7 years), so deep supports like -50% show up too
+const majorCache = {};
+let autoSeq = 0;
+async function majorBars(it, fallback){
+  const key = idOf(it), b = binSym(it);
+  if (key in majorCache) return majorCache[key] || fallback;
+  let bars = null;
+  if (b) { try { const j = await getJSON(`https://data-api.binance.vision/api/v3/klines?symbol=${b}&interval=1d&limit=1000`);
+    bars = j.map(r => ({timestamp:+r[0], open:+r[1], high:+r[2], low:+r[3], close:+r[4]})); } catch {} }
+  majorCache[key] = bars && bars.length > 60 ? bars : null;
+  return majorCache[key] || fallback;
+}
+function autoMajor(b, last, near){
+  const n = b.length, k = Math.max(4, Math.round(n / 90)), piv = autoPivots(b, k);
+  const pts = [...piv.hi, ...piv.lo].sort((a, c) => a.v - c.v), cl = [];
+  for (const p of pts) { const c = cl[cl.length - 1]; if (c && (p.v - c.v) / c.v < 0.03) { c.ps.push(p); c.v = c.ps.reduce((s, x) => s + x.v, 0) / c.ps.length; } else cl.push({v:p.v, ps:[p]}); }
+  const cand = [];
+  for (const c of cl) {
+    const dist = (c.v - last) / last;
+    if (c.ps.length < 2 || Math.abs(dist) < 0.06 || dist < -0.85 || dist > 1.5) continue;
+    if (near.some(v => Math.abs(v - c.v) / c.v < 0.03)) continue;
+    const tol = c.v * 0.015, first = Math.min(...c.ps.map(p => p.i)); let held = 0, broke = 0;
+    for (let i = first + 1; i < n; i++) {
+      const x = b[i]; if (!(x.low <= c.v + tol && x.high >= c.v - tol)) continue;
+      const prev = b[i - 1].close;
+      if ((prev > c.v && x.close < c.v - tol) || (prev < c.v && x.close > c.v + tol)) broke++; else held++;
+    }
+    const rate = held / Math.max(1, held + broke); if (rate < 0.5) continue;
+    const recent = Math.max(...c.ps.map(p => p.i)) / n;
+    cand.push({v:c.v, dist, first:b[first].timestamp, touches:c.ps.length, rate, score: c.ps.length * 2 + rate * 3 + recent * 1.5, kind: c.v > last ? 'res' : 'sup'});
+  }
+  const out = [];
+  const pick = (kind, max) => { for (const l of cand.filter(x => x.kind === kind).sort((a, c) => c.score - a.score)) {
+    if (out.filter(x => x.kind === kind).length >= max) break;
+    if (out.some(x => Math.abs(x.v - l.v) / l.v < 0.08)) continue; out.push(l); } };
+  pick('sup', 3); pick('res', 2);
+  // lowest point of the whole history, if price is well above it
+  let lo = 0; for (let i = 1; i < n; i++) if (b[i].low < b[lo].low) lo = i;
+  const lv = b[lo].low, ld = (lv - last) / last;
+  if (ld < -0.1 && !out.some(x => Math.abs(x.v - lv) / lv < 0.06)) out.push({v:lv, dist:ld, first:b[lo].timestamp, touches:1, rate:1, kind:'sup', cyc:true});
+  return out.sort((a, c) => c.v - a.v);
+}
 let autoInfo = [], autoDefs = [], autoBias = '';
 const AUTO_CATS = [['lv','Levels'],['tl','Trendlines'],['ms','Structure'],['fib','Fib'],['pat','Patterns']];
-function clearAuto(){ chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; renderAutoInfo(); }
+function clearAuto(){ autoSeq++; chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; renderAutoInfo(); }
 function runAuto(){
   clearAuto();
   if (!M().auto || mode !== 'kc') return;
   const cat = M().autoCat;
-  const all = chart.getDataList(); if (all.length < 40) return;
+  const all = chart.getDataList(); if (all.length < 12) return;
   const off = Math.max(0, all.length - 300), b = all.slice(off), n = b.length, last = b[n - 1].close;
   const atr = autoAtr(b); if (!atr) return;
   const tol = atr * 0.6, k = Math.max(3, Math.round(n / 60));
@@ -1557,8 +1608,9 @@ function runAuto(){
     chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden});
   };
   const pctAway = v => fmtPct((v - last) / last * 100);
-  const sup = autoTrend(b, piv.lo, tol, 'lo', atr), res = autoTrend(b, piv.hi, tol, 'hi', atr);
-  const pats = cat.pat ? autoPatterns(b, piv, tol, sup, res, atr) : [];
+  const few = n < 40;   // too little history for trendlines and patterns (levels and structure still work)
+  const sup = few ? null : autoTrend(b, piv.lo, tol, 'lo', atr), res = few ? null : autoTrend(b, piv.hi, tol, 'hi', atr);
+  const pats = cat.pat && !few ? autoPatterns(b, piv, tol, sup, res, atr) : [];
   const taken = new Set(); for (const p of pats) for (const q of [...(p.peaks || []), ...(p.shoulders || [])]) for (let j = -2; j <= 2; j++) taken.add(q.i + j);
   // right-side zone labels: shift one left when two would sit on top of each other
   const vr = chart.getVisibleRange(), vis = all.slice(Math.max(0, vr.from), vr.to);
@@ -1575,7 +1627,8 @@ function runAuto(){
     autoInfo.push({c: ms.trend > 0 ? AUTO.sup : ms.trend < 0 ? AUTO.res : AUTO.trend, t:'Structure: ' + (autoBias || 'no clear trend'),
       d: e ? e.t + (e.up ? ' up' : ' down') + ' at ' + fmtNum(e.from.v) + (e.at > n - 6 ? ', just now' : '') : ms.lab.slice(-2).map(x => x.t).join(', ')});
   }
-  if (cat.lv) for (const l of autoLevels(b, piv, tol, last, atr)) {
+  const nearLv = cat.lv ? autoLevels(b, piv, tol, last, atr) : [];
+  for (const l of nearLv) {
     const c = l.kind === 'res' ? AUTO.res : AUTO.sup;
     add('autoZone', [pt(l.first, l.hi), pt(n - 1, l.lo)], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + l.touches + '×', off:tagOff(l.v)});
     autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v), d: l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%, ' + pctAway(l.v)});
@@ -1614,6 +1667,21 @@ function runAuto(){
     autoInfo.push({c:AUTO.pat, t:p.name, d:p.why, pat:true});
   }
   renderAutoInfo();
+  if (cat.lv) {   // deep levels from long history arrive a moment later
+    const seq = autoSeq, it = curItem(), t0 = all[0].timestamp;
+    majorBars(it, all).then(mb => {
+      if (seq !== autoSeq || !M().auto || mode !== 'kc' || !mb || mb.length < 60) return;
+      const maj = autoMajor(mb, last, nearLv.map(l => l.v)); if (!maj.length) return;
+      for (const l of maj) {
+        const c = l.kind === 'res' ? AUTO.res : AUTO.sup, pc = fmtPct(l.dist * 100), w = l.v * 0.008;
+        add('autoZone', [{timestamp:Math.max(l.first, t0), value:l.v + w}, {timestamp:all[all.length - 1].timestamp, value:l.v - w}], c,
+          {l:(l.cyc ? 'Cycle low ' : l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + pc, a:0.09, off:tagOff(l.v)});
+        autoInfo.push({c, t:(l.cyc ? 'Cycle low ' : l.kind === 'res' ? 'Major resistance ' : 'Major support ') + fmtNum(l.v),
+          d:(l.cyc ? 'lowest price in ' + Math.round(mb.length / 30) + ' months' : l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%') + ', ' + pc, deep:true});
+      }
+      renderAutoInfo();
+    });
+  }
 }
 function renderAutoInfo(){
   const box = $('#autoInfo'); box.textContent = '';
