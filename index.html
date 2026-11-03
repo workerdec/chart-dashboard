@@ -95,7 +95,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
 .dbar .sep{height:18px;margin:0 3px}
 
 /* auto analysis summary */
-.autoinfo{position:absolute;z-index:5;right:76px;top:8px;max-width:300px;background:rgba(15,17,21,.94);border:1px solid var(--line2);border-radius:8px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.autoinfo{position:absolute;z-index:5;right:76px;top:8px;max-width:330px;background:rgba(15,17,21,.94);border:1px solid var(--line2);border-radius:8px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
 .ai-h{display:flex;align-items:center;gap:8px;height:30px;padding:0 4px 0 10px;white-space:nowrap}
 .ai-h b{font-weight:600;color:#e6b259}
 .ai-h span{color:var(--t1);overflow:hidden;text-overflow:ellipsis}
@@ -110,7 +110,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
 .ai-l small{color:var(--t3);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ai-l p{margin:6px 0 0;color:var(--t3);font-size:11px}
 .ai-c{display:flex;gap:4px;padding:8px 0 6px;flex-wrap:wrap}
-.ai-c button{height:24px;padding:0 9px;border-radius:5px;color:var(--t3);border:1px solid var(--line2);font-size:11.5px}
+.ai-c button{height:22px;padding:0 6px;border-radius:5px;color:var(--t3);border:1px solid var(--line2);font-size:11px}
 .ai-c button.on{color:var(--accent2);background:var(--active);border-color:transparent}
 .ai-f{display:flex;align-items:center;gap:8px;margin-top:6px}
 .ai-f p{flex:1;margin:0!important}
@@ -805,7 +805,8 @@ function cleanMeta(m){
   if (!m.tvView || typeof m.tvView !== 'object') m.tvView = {};
   if (!['normal','logarithm','percentage'].includes(m.scale)) m.scale = 'normal';
   m.auto = m.auto === true;
-  m.autoCat = m.autoCat && typeof m.autoCat === 'object' ? m.autoCat : {lv:true, tl:true, fib:true, pat:true};
+  m.autoCat = m.autoCat && typeof m.autoCat === 'object' ? m.autoCat : {lv:true, tl:true, ms:true, fib:true, pat:true};
+  if (m.autoCat.ms === undefined) m.autoCat.ms = true;
   m.alerts = (Array.isArray(m.alerts) ? m.alerts : []).filter(a => a && validItem(a.it) && a.price > 0);
   // old default line colours clashed with the blue candles: move them to the new palette
   const OLD = {'#2962ff':'#f0e442', '#ff9800':'#cc79a7', '#e040fb':'#e69f00', '#00bcd4':'#4fd1c5', '#4caf50':'#56b4e9', '#ffeb3b':'#f0e442'};
@@ -1293,7 +1294,7 @@ function saveDrawings(){
   if (mode !== 'kc' || restoring) return;
   const sym = chart.getSymbol(); const id = sym && sym._id; if (!id) return;
   const list = chart.getOverlays({groupId:'u'}).filter(o => o.currentStep === -1 && o.points.length)
-    .map(o => ({name:o.name, points:o.points.map(p => ({timestamp:p.timestamp, value:p.value})), extendData: typeof o.extendData === 'string' ? o.extendData : undefined,
+    .map(o => ({name:o.name, points:o.points.map(p => ({timestamp:p.timestamp, value:p.value})), extendData: typeof o.extendData === 'string' ? o.extendData : o.extendData && typeof o.extendData === 'object' ? JSON.parse(JSON.stringify(o.extendData)) : undefined,
       styles: o.styles && typeof o.styles === 'object' ? JSON.parse(JSON.stringify(o.styles)) : undefined, lock: o.lock || undefined}));
   const prev = S.draws[id];
   if (prev && JSON.stringify(prev.o) === JSON.stringify(list)) return;
@@ -1312,10 +1313,77 @@ function restoreDrawings(id){
   }
   restoring = false;
 }
-// ---------- auto draw: finds the levels, trendlines and patterns the chart respects ----------
+// ---------- auto draw: finds the levels, trendlines, structure and patterns the chart respects ----------
 // Every candidate line is tested against past bars (how often price touched it and held vs broke it),
 // and only the lines with the best record are drawn.
 const AUTO = {sup:'#27ad75', res:'#f0616d', trend:'#5b8cff', fib:'#b39dff', pat:'#e6b259'};
+// drawing shapes used by auto draw (they also work as normal drawings after "Keep lines")
+const atag = (x, y, text, bg, align, base) => { const t = tag(x, y, text, bg, align, base); t.styles.color = isLight(bg) ? '#08090c' : '#fff'; t.styles.size = 10.5; t.styles.weight = 600; t.styles.paddingTop = t.styles.paddingBottom = 2; t.styles.paddingLeft = t.styles.paddingRight = 5; return t; };
+const paneW = (bounding, c) => bounding && bounding.width ? bounding.width : Math.max(...c.map(p => p.x)) + 300;
+const inPane = (y, bounding) => !bounding || !bounding.height || (y > 8 && y < bounding.height - 8);
+// support / resistance zone: band from the first touch to the right edge, price tag on the right
+K.registerOverlay({
+  name:'autoZone', totalStep:3, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
+  createPointFigures:({overlay, coordinates:c, bounding}) => {
+    if (c.length < 2) return [];
+    const col = ovColor(overlay), e = overlay.extendData || {}, W = paneW(bounding, c);
+    const x0 = Math.min(c[0].x, c[1].x), y0 = Math.min(c[0].y, c[1].y), hh = Math.max(3, Math.abs(c[1].y - c[0].y)), ym = y0 + hh / 2;
+    const out = [{type:'rect', ignoreEvent:true, attrs:{x:x0, y:y0, width:Math.max(0, W - x0), height:hh}, styles:{style:'fill', color:hexA(col, e.a || 0.13)}},
+      {type:'line', attrs:{coordinates:[{x:x0, y:ym}, {x:W, y:ym}]}, styles:{color:hexA(col, 0.75), size:1, style:'dashed', dashedValue:[5,4]}}];
+    if (e.l && inPane(ym, bounding)) out.push(atag(W - 4 - (e.off || 0), ym, e.l, col, 'right'));
+    return out;
+  }
+});
+// line through two points, extended right; optional label at the right end
+K.registerOverlay({
+  name:'autoLine', totalStep:3, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
+  createPointFigures:({overlay, coordinates:c, bounding}) => {
+    if (c.length < 2) return [];
+    const col = ovColor(overlay), e = overlay.extendData || {}, [a, b] = c, dx = b.x - a.x;
+    if (Math.abs(dx) < 1e-6) return [];
+    const W = e.seg ? b.x : paneW(bounding, c), s = (b.y - a.y) / dx, at = x => a.y + s * (x - a.x);
+    const sz = (overlay.styles && overlay.styles.line && overlay.styles.line.size) || e.w || 1.5;
+    const out = [{type:'line', attrs:{coordinates:[a, {x:W, y:at(W)}]}, styles:{color:col, size:sz, style: e.d ? 'dashed' : 'solid', dashedValue:[4,4]}}];
+    if (e.l) {
+      if (e.seg) out.push(atag((a.x + b.x) / 2, Math.min(a.y, b.y) - 3, e.l, col, 'center', 'bottom'));
+      else { let lx = W - 4; while (lx > a.x && !inPane(at(lx), bounding)) lx -= 20; if (lx > a.x + 40) out.push(atag(lx, at(lx) + (e.up ? -4 : 4), e.l, col, 'right', e.up ? 'bottom' : 'top')); }
+    }
+    return out;
+  }
+});
+// measured-move target: dashed line from now to the right edge with the target and % away
+K.registerOverlay({
+  name:'autoTarget', totalStep:2, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:true,
+  createPointFigures:({overlay, coordinates:c, bounding}) => {
+    if (!c.length) return [];
+    const col = ovColor(overlay), e = overlay.extendData || {}, W = paneW(bounding, c), y = c[0].y;
+    if (!inPane(y, bounding)) return [];
+    return [{type:'line', attrs:{coordinates:[{x:c[0].x, y}, {x:W, y}]}, styles:{color:col, size:1, style:'dashed', dashedValue:[2,3]}},
+      atag(c[0].x + 6, y - 3, e.l || 'Target', col, 'left', 'bottom')];
+  }
+});
+// shaded pattern area between two lines: points = top start, top end, bottom end, bottom start
+K.registerOverlay({
+  name:'autoShade', totalStep:5, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
+  createPointFigures:({overlay, coordinates:c}) => {
+    if (c.length < 4) return [];
+    const col = ovColor(overlay), e = overlay.extendData || {};
+    const out = [{type:'polygon', ignoreEvent:true, attrs:{coordinates:c.slice(0, 4)}, styles:{style:'fill', color:hexA(col, 0.09)}}];
+    if (e.l) out.push(atag(c[0].x, c[0].y - 5, e.l, col, 'left', 'bottom'));
+    return out;
+  }
+});
+// small text mark above a high or below a low (HH / HL / LH / LL)
+K.registerOverlay({
+  name:'autoMark', totalStep:2, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
+  createPointFigures:({overlay, coordinates:c}) => {
+    if (!c.length) return [];
+    const col = ovColor(overlay), e = overlay.extendData || {};
+    return [{type:'text', ignoreEvent:true, attrs:{x:c[0].x, y:c[0].y + (e.up ? -14 : 14), text:e.l || '', align:'center', baseline: e.up ? 'bottom' : 'top'},
+      styles:{color:col, backgroundColor:'rgba(0,0,0,0)', borderColor:'rgba(0,0,0,0)', size:10.5, family:CF, weight:600, paddingLeft:0, paddingRight:0, paddingTop:0, paddingBottom:0}}];
+  }
+});
+
 function autoAtr(b, n = 14){ let s = 0, c = 0; for (let i = Math.max(1, b.length - n * 4); i < b.length; i++) { s += Math.max(b[i].high - b[i].low, Math.abs(b[i].high - b[i-1].close), Math.abs(b[i].low - b[i-1].close)); c++; } return c ? s / c : 0; }
 function autoPivots(b, k){
   const hi = [], lo = [];
@@ -1345,55 +1413,84 @@ function autoLevels(b, piv, tol, last, atr){
     const rate = held / Math.max(1, held + broke);
     const recent = Math.max(...c.ps.map(p => p.i)) / b.length;
     const dist = Math.abs(c.v - last) / atr;
-    if (dist > 10) continue;
-    out.push({v:c.v, first, touches:c.ps.length, rate, score: c.ps.length * 2 + rate * 4 + recent * 2 - dist * 0.6, kind: c.v >= last ? 'res' : 'sup'});
+    if (dist > 10 || dist < 0.25) continue;   // skip levels price is sitting on right now
+    const vs = c.ps.map(p => p.v);
+    out.push({v:c.v, lo:Math.max(Math.min(...vs), c.v - tol * 0.3), hi:Math.min(Math.max(...vs), c.v + tol * 0.3), first, touches:c.ps.length, rate,
+      score: c.ps.length * 2 + rate * 4 + recent * 2 - dist * 0.6, kind: c.v >= last ? 'res' : 'sup'});
   }
   const pick = kind => out.filter(l => l.kind === kind && l.rate >= 0.6).sort((a, c) => c.score - a.score).slice(0, 2);
   return [...pick('res'), ...pick('sup')];
 }
-// trendlines: try every pair of pivots, keep lines price has respected up to now
+// trendlines: try every pair of recent pivots, keep the line price has respected up to now
 function autoTrend(b, ps, tol, side, atr){
   let best = null;
-  const n = b.length, recent = ps.filter(p => p.i > n * 0.25);
+  const n = b.length, recent = ps.filter(p => p.i > n * 0.3);
   for (let a = 0; a < recent.length; a++) for (let c = a + 1; c < recent.length; c++) {
     const A = recent[a], C = recent[c]; if (C.i - A.i < 5) continue;
     const s = (C.v - A.v) / (C.i - A.i), at = i => A.v + (i - A.i) * s;
-    let bad = 0, touches = 0, ok = true;
+    let bad = 0, ok = true;
     for (let i = A.i; i < n; i++) {
       const y = at(i), x = b[i];
-      if (side === 'lo' ? x.close < y - tol : x.close > y + tol) { if (++bad > 1) { ok = false; break; } }
+      if (side === 'lo' ? x.close < y - tol * 0.5 : x.close > y + tol * 0.5) { if (++bad > 1) { ok = false; break; } }
     }
     if (!ok) continue;
-    for (const p of ps) if (p.i >= A.i && Math.abs(p.v - at(p.i)) < tol) touches++;
+    const hits = ps.filter(p => p.i >= A.i && Math.abs(p.v - at(p.i)) < tol * 0.6), touches = hits.length;
     if (touches < 3 && !(touches === 2 && C.i > n * 0.8)) continue;
-    const dist = Math.abs(at(n - 1) - b[n - 1].close) / atr; if (dist > 6) continue;
-    const score = touches * 3 + (n - A.i) / n * 2 - bad - dist * 0.5;
-    if (!best || score > best.score) best = {A, C, s, at, touches, score, held: 1 - bad / Math.max(1, touches + bad)};
+    const dist = Math.abs(at(n - 1) - b[n - 1].close) / atr; if (dist > 5) continue;
+    const span = (n - A.i) / n;
+    const score = touches * 3 + span * 2 - bad * 1.5 - dist * 0.6;
+    if (!best || score > best.score) best = {A, C, s, at, touches, score, last: hits[hits.length - 1].i};
   }
   return best;
 }
+// market structure: higher highs / higher lows, and the latest break of structure (BOS) or change of character (CHoCH)
+function autoStructure(b, k){
+  const piv = autoPivots(b, k);
+  const seq = [...piv.hi.map(p => ({...p, h:1})), ...piv.lo.map(p => ({...p, h:0}))].sort((a, c) => a.i - c.i);
+  const alt = [];
+  for (const p of seq) { const q = alt[alt.length - 1]; if (q && q.h === p.h) { if (p.h ? p.v > q.v : p.v < q.v) alt[alt.length - 1] = p; } else alt.push(p); }
+  const lab = []; let lh = null, ll = null;
+  for (const p of alt) {
+    if (p.h) { if (lh) lab.push({...p, t: p.v > lh.v ? 'HH' : 'LH'}); lh = p; }
+    else { if (ll) lab.push({...p, t: p.v > ll.v ? 'HL' : 'LL'}); ll = p; }
+  }
+  let trend = 0, sh = null, sl = null, ai = 0; const ev = [];
+  for (let i = 0; i < b.length; i++) {
+    while (ai < alt.length && alt[ai].i + k <= i) { const p = alt[ai++]; if (p.h) sh = {...p, used:false}; else sl = {...p, used:false}; }
+    if (sh && !sh.used && b[i].close > sh.v) { sh.used = true; ev.push({t: trend < 0 ? 'CHoCH' : 'BOS', up:true, from:sh, at:i}); trend = 1; }
+    if (sl && !sl.used && b[i].close < sl.v) { sl.used = true; ev.push({t: trend > 0 ? 'CHoCH' : 'BOS', up:false, from:sl, at:i}); trend = -1; }
+  }
+  return {lab: lab.slice(-6), trend, ev: ev.slice(-2)};
+}
 function autoPatterns(b, piv, tol, sup, res, atr){
   const out = [], n = b.length, H = piv.hi, L = piv.lo, last = b[n - 1].close;
-  // trendline pair -> channel / triangle / wedge, with the breakout target (height of the pattern)
-  if (sup && res && Math.max(sup.A.i, res.A.i) < n - 15) {
-    const ss = sup.s / atr, rs = res.s / atr, flat = 0.012, conv = rs - ss;
-    let name = null;
-    if (Math.abs(conv) < 0.03) name = ss > flat ? 'Ascending channel' : ss < -flat ? 'Descending channel' : 'Range';
-    else if (conv < 0) {
-      if (rs < -flat && ss > flat) name = 'Symmetrical triangle';
-      else if (Math.abs(rs) <= flat && ss > flat) name = 'Ascending triangle';
-      else if (rs < -flat && Math.abs(ss) <= flat) name = 'Descending triangle';
-      else if (ss > flat && rs > flat) name = 'Rising wedge';
-      else if (ss < -flat && rs < -flat) name = 'Falling wedge';
-    }
-    if (name) {
-      const start = Math.max(sup.A.i, res.A.i), height = Math.abs(res.at(start) - sup.at(start));
-      const top = res.at(n - 1), bot = sup.at(n - 1);
-      const p = {name, i: n - 1, v: (top + bot) / 2, why:'between two trendlines'};
-      if (last > top + tol * 0.3) { p.target = top + height; p.why = 'broke above, target ' + fmtNum(p.target); }
-      else if (last < bot - tol * 0.3) { p.target = bot - height; p.why = 'broke below, target ' + fmtNum(p.target); }
-      else p.why = 'breakout targets ' + fmtNum(top + height) + ' / ' + fmtNum(Math.max(0, bot - height));
-      out.push(p);
+  // two trendlines that frame the same stretch of price -> channel / triangle / wedge / broadening
+  if (sup && res) {
+    const st = Math.max(sup.A.i, res.A.i), en = n - 1, len = en - st, early = Math.min(sup.A.i, res.A.i);
+    const h0 = res.at(st) - sup.at(st), h1 = res.at(en) - sup.at(en);
+    const sameStretch = st - early < (en - early) * 0.45 && len >= 15 && sup.last > st && res.last > st;
+    if (sameStretch && h0 > atr && h1 > 0) {
+      const ss = sup.s / atr, rs = res.s / atr, flat = 0.015, r = h1 / h0;
+      let name = null;
+      if (r > 0.72 && r < 1.38) name = (ss + rs) / 2 > flat ? 'Ascending channel' : (ss + rs) / 2 < -flat ? 'Descending channel' : 'Range';
+      else if (r <= 0.72) {
+        const apex = en + h1 / ((h0 - h1) / len);
+        if (apex - en < len * 1.5) {
+          if (rs < -flat && ss > flat) name = 'Symmetrical triangle';
+          else if (Math.abs(rs) <= flat && ss > flat) name = 'Ascending triangle';
+          else if (rs < -flat && Math.abs(ss) <= flat) name = 'Descending triangle';
+          else if (ss > flat && rs > flat) name = 'Rising wedge';
+          else if (ss < -flat && rs < -flat) name = 'Falling wedge';
+        }
+      } else name = 'Broadening pattern';
+      if (name) {
+        const top = res.at(en), bot = sup.at(en);
+        const p = {name, i:st, v:res.at(st), shade:{st, en, top0:res.at(st), top1:top, bot0:sup.at(st), bot1:bot}, why:'price between two trendlines'};
+        if (last > top + tol * 0.3) { p.target = top + h0; p.why = 'broke above, target ' + fmtNum(p.target); }
+        else if (last < bot - tol * 0.3) { p.target = bot - h0; p.why = 'broke below, target ' + fmtNum(Math.max(0, p.target)); }
+        else p.why = 'breakout targets ' + fmtNum(top + h0) + ' / ' + fmtNum(Math.max(0, bot - h0));
+        out.push(p);
+      }
     }
   }
   // double top / bottom: last two swings at the same price with a clear dip/rally between
@@ -1401,11 +1498,13 @@ function autoPatterns(b, piv, tol, sup, res, atr){
     if (P.length < 2) return;
     const a = P[P.length - 2], c = P[P.length - 1]; if (c.i < n - 60 || c.i - a.i < 6) return;
     if (Math.abs(a.v - c.v) > tol * 1.2) return;
+    if (top ? Math.max(...b.slice(c.i + 1).map(x => x.close), -Infinity) > Math.max(a.v, c.v) : Math.min(...b.slice(c.i + 1).map(x => x.close), Infinity) < Math.min(a.v, c.v)) return;   // already invalidated
     const mid = Q.filter(q => q.i > a.i && q.i < c.i); if (!mid.length) return;
     const m = top ? Math.min(...mid.map(q => q.v)) : Math.max(...mid.map(q => q.v));
     if (Math.abs(m - c.v) < atr * 2) return;
-    const target = top ? m - (c.v - m) : m + (m - c.v);
-    out.push({name: top ? 'Double top' : 'Double bottom', i:c.i, v:c.v, neck:m, target, why:'neckline ' + fmtNum(m) + ', target ' + fmtNum(Math.max(0, target))});
+    const target = top ? m - (c.v - m) : m + (m - c.v), done = top ? last < m : last > m;
+    out.push({name: top ? 'Double top' : 'Double bottom', i:c.i, v:c.v, peaks:[a, c], top, neck:m, neckI:a.i, target: done ? target : NaN,
+      why: done ? 'broke neckline ' + fmtNum(m) + ', target ' + fmtNum(Math.max(0, target)) : 'confirms on a close ' + (top ? 'below ' : 'above ') + fmtNum(m)});
   };
   two(H, L, true); two(L, H, false);
   // head and shoulders (and inverse) from the last three swings
@@ -1416,8 +1515,9 @@ function autoPatterns(b, piv, tol, sup, res, atr){
     if (!higher || Math.abs(l.v - r.v) > tol * 2) return;
     const q1 = Q.filter(q => q.i > l.i && q.i < hd.i), q2 = Q.filter(q => q.i > hd.i && q.i < r.i); if (!q1.length || !q2.length) return;
     const pick = arr => arr.reduce((x, y) => (top ? y.v < x.v : y.v > x.v) ? y : x);
-    const A = pick(q1), B = pick(q2), neck = (A.v + B.v) / 2, target = top ? neck - (hd.v - neck) : neck + (neck - hd.v);
-    out.push({name: top ? 'Head and shoulders' : 'Inverse head and shoulders', i:hd.i, v:hd.v, neckA:A, neckB:B, target, why:'neckline ' + fmtNum(neck) + ', target ' + fmtNum(Math.max(0, target))});
+    const A = pick(q1), B = pick(q2), neck = (A.v + B.v) / 2, target = top ? neck - (hd.v - neck) : neck + (neck - hd.v), done = top ? last < neck : last > neck;
+    out.push({name: top ? 'Head and shoulders' : 'Inverse head and shoulders', i:hd.i, v:hd.v, top, shoulders:[l, hd, r], neckA:A, neckB:B, target: done ? target : NaN,
+      why: done ? 'broke neckline ' + fmtNum(neck) + ', target ' + fmtNum(Math.max(0, target)) : 'confirms on a close ' + (top ? 'below ' : 'above ') + fmtNum(neck)});
   };
   hs(H, L, true); hs(L, H, false);
   // bull / bear flag: a sharp move (pole) then a tight pause that has not given back half of it
@@ -1437,9 +1537,9 @@ function autoPatterns(b, piv, tol, sup, res, atr){
   keep('Double top', 'Double bottom'); keep('Head and shoulders', 'Inverse head and shoulders');
   return out;
 }
-let autoInfo = [], autoDefs = [];
-const AUTO_CATS = [['lv','Levels'],['tl','Trendlines'],['fib','Fib'],['pat','Patterns']];
-function clearAuto(){ chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; renderAutoInfo(); }
+let autoInfo = [], autoDefs = [], autoBias = '';
+const AUTO_CATS = [['lv','Levels'],['tl','Trendlines'],['ms','Structure'],['fib','Fib'],['pat','Patterns']];
+function clearAuto(){ chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; renderAutoInfo(); }
 function runAuto(){
   clearAuto();
   if (!M().auto || mode !== 'kc') return;
@@ -1450,35 +1550,67 @@ function runAuto(){
   const tol = atr * 0.6, k = Math.max(3, Math.round(n / 60));
   const piv = autoPivots(b, k);
   const ts = i => b[Math.min(n - 1, Math.max(0, i))].timestamp;
-  const add = (name, points, styles, extendData) => { autoDefs.push({name, points, styles, extendData}); chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden}); };
-  const dash = c => ({line:{color:c, size:1, style:'dashed', dashedValue:[4,4]}, point:{color:c, activeColor:c, radius:0, borderSize:0}});
-  const lab = c => ({line:{color:c, size:1}, text:{color: isLight(c) ? '#08090c' : '#fff', backgroundColor:c, borderColor:c, size:11, family:CF, weight:600, borderRadius:3, paddingLeft:5, paddingRight:5, paddingTop:2, paddingBottom:2}});
+  const pt = (i, value) => ({timestamp:ts(i), value});
+  const add = (name, points, color, extendData) => {
+    const styles = {line:{color}};
+    autoDefs.push({name, points, styles, extendData});
+    chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden});
+  };
+  const pctAway = v => fmtPct((v - last) / last * 100);
+  const sup = autoTrend(b, piv.lo, tol, 'lo', atr), res = autoTrend(b, piv.hi, tol, 'hi', atr);
+  const pats = cat.pat ? autoPatterns(b, piv, tol, sup, res, atr) : [];
+  const taken = new Set(); for (const p of pats) for (const q of [...(p.peaks || []), ...(p.shoulders || [])]) for (let j = -2; j <= 2; j++) taken.add(q.i + j);
+  // right-side zone labels: shift one left when two would sit on top of each other
+  const vr = chart.getVisibleRange(), vis = all.slice(Math.max(0, vr.from), vr.to);
+  const pxPerPrice = 560 / Math.max(1e-12, Math.max(...vis.map(x => x.high)) - Math.min(...vis.map(x => x.low)));
+  const tagYs = [];
+  const tagOff = v => { const y = v * pxPerPrice; const hit = tagYs.filter(o => Math.abs(o.y - y) < 19); const off = hit.length ? Math.max(...hit.map(o => o.off)) + 118 : 0; tagYs.push({y, off}); return off; };
+  // market structure sets the trend read for the panel header
+  const ms = autoStructure(b, Math.max(4, Math.round(n / 45)));
+  autoBias = ms.trend > 0 ? 'Uptrend' : ms.trend < 0 ? 'Downtrend' : '';
+  if (cat.ms !== false) {
+    for (const p of ms.lab) if (!taken.has(p.i)) add('autoMark', [pt(p.i, p.v)], p.t[0] === 'H' ? AUTO.sup : AUTO.res, {l:p.t, up:!!p.h});
+    for (const e of ms.ev) add('autoLine', [pt(e.from.i, e.from.v), pt(e.at, e.from.v)], e.up ? AUTO.sup : AUTO.res, {l:e.t, seg:1, d:1, w:1});
+    const e = ms.ev[ms.ev.length - 1];
+    autoInfo.push({c: ms.trend > 0 ? AUTO.sup : ms.trend < 0 ? AUTO.res : AUTO.trend, t:'Structure: ' + (autoBias || 'no clear trend'),
+      d: e ? e.t + (e.up ? ' up' : ' down') + ' at ' + fmtNum(e.from.v) + (e.at > n - 6 ? ', just now' : '') : ms.lab.slice(-2).map(x => x.t).join(', ')});
+  }
   if (cat.lv) for (const l of autoLevels(b, piv, tol, last, atr)) {
     const c = l.kind === 'res' ? AUTO.res : AUTO.sup;
-    add('horizontalRayLine', [{timestamp:ts(l.first), value:l.v}, {timestamp:ts(n - 1), value:l.v}], dash(c));
-    autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v), d: l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%'});
+    add('autoZone', [pt(l.first, l.hi), pt(n - 1, l.lo)], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + l.touches + '×', off:tagOff(l.v)});
+    autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v), d: l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%, ' + pctAway(l.v)});
   }
-  const sup = autoTrend(b, piv.lo, tol, 'lo', atr), res = autoTrend(b, piv.hi, tol, 'hi', atr);
   if (cat.tl) for (const [t, nm, up] of [[sup, 'Support trendline', 0], [res, 'Resistance trendline', 1]]) if (t) {
-    add('rayLine', [{timestamp:ts(t.A.i), value:t.A.v}, {timestamp:ts(t.C.i), value:t.C.v}], {line:{color:AUTO.trend, size:1.5}, point:{radius:0, borderSize:0}});
     const now = t.at(n - 1), broke = up ? last > now + tol * 0.3 : last < now - tol * 0.3;
+    add('autoLine', [pt(t.A.i, t.A.v), pt(t.C.i, t.C.v)], broke ? AUTO.pat : AUTO.trend, {l: broke ? (up ? 'Breakout' : 'Breakdown') : '', up:!!up});
     autoInfo.push({c: broke ? AUTO.pat : AUTO.trend, t: broke ? (up ? 'Breaking out above trendline' : 'Breaking down below trendline') : nm, d:t.touches + ' touches, now at ' + fmtNum(now), alert:broke});
   }
-  if (cat.fib) {
-    let hiI = 0, loI = 0; for (let i = 1; i < n; i++) { if (b[i].high > b[hiI].high) hiI = i; if (b[i].low < b[loI].low) loI = i; }
-    const [f0, f1] = hiI < loI ? [{i:hiI, v:b[hiI].high}, {i:loI, v:b[loI].low}] : [{i:loI, v:b[loI].low}, {i:hiI, v:b[hiI].high}];
-    add('fibonacciLine', [{timestamp:ts(f0.i), value:f0.v}, {timestamp:ts(f1.i), value:f1.v}], {line:{color:hexA(AUTO.fib, 0.55), size:1, style:'dashed', dashedValue:[2,3]}, text:{color:AUTO.fib, backgroundColor:'rgba(0,0,0,0)', borderColor:'rgba(0,0,0,0)', size:10, family:CF}, point:{radius:0, borderSize:0}});
-    autoInfo.push({c:AUTO.fib, t:'Fibonacci', d:'swing ' + fmtNum(f0.v) + ' → ' + fmtNum(f1.v)});
+  if (cat.fib) {   // only the 0.5 to 0.618 pullback zone of the biggest recent swing
+    const w = Math.min(n, 150), o = n - w;
+    let hiI = o, loI = o; for (let i = o; i < n; i++) { if (b[i].high > b[hiI].high) hiI = i; if (b[i].low < b[loI].low) loI = i; }
+    const hi = b[hiI].high, lo = b[loI].low, upMove = loI < hiI, rng = hi - lo;
+    const at = r => upMove ? hi - rng * r : lo + rng * r, z0 = at(0.5), z1 = at(0.618), from = Math.max(hiI, loI);
+    if (from < n - 2) {
+      add('autoZone', [pt(from, Math.max(z0, z1)), pt(n - 1, Math.min(z0, z1))], AUTO.fib, {l:'Fib 0.5–0.618', a:0.06, off:tagOff((z0 + z1) / 2)});
+      autoInfo.push({c:AUTO.fib, t:'Fib pullback zone', d:fmtNum(Math.min(z0, z1)) + ' – ' + fmtNum(Math.max(z0, z1)) + ' (' + (upMove ? 'up' : 'down') + ' swing ' + fmtNum(upMove ? lo : hi) + ' → ' + fmtNum(upMove ? hi : lo) + ')'});
+    }
   }
-  if (cat.pat) for (const p of autoPatterns(b, piv, tol, sup, res, atr)) {
-    add('simpleAnnotation', [{timestamp:ts(p.i), value:p.v}], lab(AUTO.pat), p.name);
-    if (p.neck) add('horizontalRayLine', [{timestamp:ts(p.i - 20), value:p.neck}, {timestamp:ts(n - 1), value:p.neck}], dash(AUTO.pat));
-    if (p.neckA) add('rayLine', [{timestamp:ts(p.neckA.i), value:p.neckA.v}, {timestamp:ts(p.neckB.i), value:p.neckB.v}], dash(AUTO.pat));
+  for (const p of pats) {
+    if (p.shade) { const s = p.shade;
+      add('autoShade', [pt(s.st, s.top0), pt(s.en, s.top1), pt(s.en, s.bot1), pt(s.st, s.bot0)], AUTO.pat, {l:p.name}); }
+    if (p.peaks) {
+      add('autoLine', [pt(p.neckI, p.neck), pt(n - 1, p.neck)], AUTO.pat, {l:'Neckline', d:1, w:1, seg:1});
+      p.peaks.forEach((q, j) => add('autoMark', [pt(q.i, q.v)], AUTO.pat, {l: j ? p.name : (p.top ? 'Top' : 'Bottom'), up:p.top}));
+    }
+    if (p.shoulders) {
+      add('autoLine', [pt(p.neckA.i, p.neckA.v), pt(p.neckB.i, p.neckB.v)], AUTO.pat, {l:'Neckline', d:1, w:1});
+      ['LS', 'Head', 'RS'].forEach((l, j) => add('autoMark', [pt(p.shoulders[j].i, p.shoulders[j].v)], AUTO.pat, {l, up:p.top}));
+    }
     if (p.flag) { const f = p.flag;
-      add('segment', [{timestamp:ts(f.s), value:b[f.s].close}, {timestamp:ts(f.e), value:b[f.e].close}], {line:{color:AUTO.pat, size:2}, point:{radius:0, borderSize:0}});
-      add('rectZone', [{timestamp:ts(f.e + 1), value:f.hi}, {timestamp:ts(n - 1), value:f.lo}], {polygon:{color:hexA(AUTO.pat, 0.08), borderColor:AUTO.pat, borderSize:1}, point:{radius:0, borderSize:0}}); }
-    if (isFinite(p.target) && p.target > 0 && !/Range|channel/.test(p.name))
-      add('priceLine', [{timestamp:ts(n - 1), value:p.target}], {line:{color:AUTO.pat, size:1, style:'dashed', dashedValue:[2,3]}, text:{color:AUTO.pat, size:11, family:CF}, point:{radius:0, borderSize:0}});
+      add('autoLine', [pt(f.s, b[f.s].close), pt(f.e, b[f.e].close)], AUTO.pat, {l:p.name, seg:1, w:2});
+      add('autoShade', [pt(f.e + 1, f.hi), pt(n - 1, f.hi), pt(n - 1, f.lo), pt(f.e + 1, f.lo)], AUTO.pat, {}); }
+    if (isFinite(p.target) && p.target > 0 && !/Range|channel|Broadening/.test(p.name))
+      add('autoTarget', [pt(n - 1, p.target)], AUTO.pat, {l:'Target ' + fmtNum(p.target) + '  ' + pctAway(p.target)});
     autoInfo.push({c:AUTO.pat, t:p.name, d:p.why, pat:true});
   }
   renderAutoInfo();
@@ -1487,7 +1619,7 @@ function renderAutoInfo(){
   const box = $('#autoInfo'); box.textContent = '';
   if (!M().auto || mode !== 'kc') { box.hidden = true; return; }
   const pats = autoInfo.filter(x => x.pat || x.alert);
-  box.append(h('div', {class:'ai-h'}, h('b', {text:'Auto'}), h('span', {text: pats.length ? pats.map(p => p.t).join(', ') : 'No clear pattern'}),
+  box.append(h('div', {class:'ai-h'}, h('b', {text:'Auto'}), h('span', {text: [autoBias, ...pats.map(p => p.t)].filter(Boolean).join(' · ') || 'No clear pattern'}),
     h('button', {title:'Details and options', svg:svg(ICON.chev), onclick:() => box.classList.toggle('open')})));
   const list = h('div', {class:'ai-l'});
   const chips = h('div', {class:'ai-c'});
