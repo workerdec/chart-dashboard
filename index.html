@@ -811,6 +811,7 @@ function cleanMeta(m){
   m.alerts = (Array.isArray(m.alerts) ? m.alerts : []).filter(a => a && validItem(a.it) && a.price > 0);
   // old default line colours clashed with the blue candles: move them to the new palette
   const OLD = {'#2962ff':'#f0e442', '#ff9800':'#cc79a7', '#e040fb':'#e69f00', '#00bcd4':'#4fd1c5', '#4caf50':'#56b4e9', '#ffeb3b':'#f0e442'};
+  if (!m.addLit) { if (!m.watch.some(w => w.s === 'OKX:LITUSDT')) m.watch.push({k:'tv', s:'OKX:LITUSDT', n:'LITUSDT', x:'OKX', g:'My tokens', img:'https://coin-images.coingecko.com/coins/images/71121/large/lighter.png'}); m.addLit = 1; }
   if (!m.pal5) { for (const x of m.ind) x.c = x.c.map(c => OLD[String(c).toLowerCase()] || c); m.pal5 = 1; }
   return m;
 }
@@ -906,12 +907,34 @@ function binSym(it){
   if (it.k !== 'tv') return null;
   const [ex, sym] = it.s.split(':');
   if (ex === 'BINANCE') return /^[A-Z0-9]{2,20}$/.test(sym) ? sym : null;
-  const m = /^(BITSTAMP|COINBASE|KRAKEN|BYBIT|OKX|BITFINEX|GEMINI)$/.test(ex) && sym.match(/^([A-Z0-9]{2,10})USDT?$/);
+  const m = /^(BITSTAMP|COINBASE|KRAKEN|BYBIT|BITFINEX|GEMINI)$/.test(ex) && sym.match(/^([A-Z0-9]{2,10})USDT?$/);
   return m ? m[1] + 'USDT' : null;
+}
+// OKX spot pairs (for tokens Binance doesn't list, e.g. Lighter's LIT): OKX:LITUSDT -> LIT-USDT
+function okxInst(it){
+  if (it.k !== 'tv') return null;
+  const [ex, sym] = it.s.split(':'); if (ex !== 'OKX') return null;
+  const m = /^([A-Z0-9]{1,15})(USDT|USDC|USD)$/.exec(sym || ''); return m ? m[1] + '-' + (m[2] === 'USD' ? 'USDT' : m[2]) : null;
 }
 function srcOf(it){
   if (it.k === 'dex') return 'gecko';
+  if (okxInst(it)) return 'okx';
   return binSym(it) ? 'binance' : 'tv';
+}
+const OKX = 'https://www.okx.com/api/v5/market/';
+const OKX_BAR = {'1m':'1m','5m':'5m','15m':'15m','1h':'1H','4h':'4H','1D':'1Dutc','1W':'1Wutc','1M':'1Mutc'};
+const okxRows = d => d.map(r => ({timestamp:+r[0], open:+r[1], high:+r[2], low:+r[3], close:+r[4], volume:+r[5]})).reverse();
+// up to n bars ending before `before` (newest first from OKX: recent endpoint gives 300, history pages give 100)
+async function okxBars(inst, bar, n, before){
+  let rows = [];
+  if (!before) { const j = await getJSON(`${OKX}candles?instId=${inst}&bar=${bar}&limit=300`); rows = okxRows(j.data || []); }
+  while (rows.length < n) {
+    const end = rows.length ? rows[0].timestamp : before;
+    const j = await getJSON(`${OKX}history-candles?instId=${inst}&bar=${bar}&limit=100${end ? '&after=' + end : ''}`);
+    const more = okxRows(j.data || []); if (!more.length) break;
+    rows = more.concat(rows); if (more.length < 100) break;
+  }
+  return rows;
 }
 const GK_NET = {ethereum:'eth', polygon:'polygon_pos', avalanche:'avax', sui:'sui-network', cronos:'cro', fantom:'ftm'};
 function bucket(ts, agg){ const d = new Date(ts);
@@ -922,7 +945,10 @@ function aggregate(rows, agg){ if (!agg) return rows; const out = [];
     if (last && last.timestamp === b){ last.high = Math.max(last.high, r.high); last.low = Math.min(last.low, r.low); last.close = r.close; last.volume += r.volume || 0; }
     else out.push({timestamp:b, open:r.open, high:r.high, low:r.low, close:r.close, volume:r.volume || 0}); }
   return out; }
-async function getJSON(url){ const r = await fetch(url); if (!r.ok) throw new Error(r.status + ' ' + url); return r.json(); }
+async function getJSON(url, tries = 3){   // waits and retries when an API says "too many requests"
+  const r = await fetch(url);
+  if (r.status === 429 && tries > 1) { await new Promise(res => setTimeout(res, (4 - tries) * 2500)); return getJSON(url, tries - 1); }
+  if (!r.ok) throw new Error(r.status + ' ' + url); return r.json(); }
 const gkRows = list => list.map(r => ({timestamp:r[0] * 1000, open:+r[1], high:+r[2], low:+r[3], close:+r[4], volume:+r[5]})).sort((a, b) => a.timestamp - b.timestamp);
 const gkUrl = (it, f, limit, before) => `https://api.geckoterminal.com/api/v2/networks/${encodeURIComponent(GK_NET[it.c] || it.c)}/pools/${encodeURIComponent(it.p)}/ohlcv/${f.gk[0]}?aggregate=${f.gk[1]}&limit=${limit}&currency=usd${before ? '&before_timestamp=' + Math.floor(before / 1000) : ''}`;
 
@@ -931,6 +957,10 @@ const SRC = {
   async binance(it, tf, before){
     const j = await getJSON(`https://data-api.binance.vision/api/v3/klines?symbol=${binSym(it)}&interval=${TFI[tf].bn}&limit=1000${before ? '&endTime=' + (before - 1) : ''}`);
     return {rows: j.map(r => ({timestamp:r[0], open:+r[1], high:+r[2], low:+r[3], close:+r[4], volume:+r[5]})), more: j.length === 1000};
+  },
+  async okx(it, tf, before){
+    const rows = await okxBars(okxInst(it), OKX_BAR[tf], before ? 300 : 600, before);
+    return {rows, more: rows.length >= (before ? 300 : 600)};
   },
   async gecko(it, tf, before){
     const f = TFI[tf];
@@ -955,6 +985,19 @@ function startLive(it, tf, cb){
       ws.onclose = () => { if (!L.stop) setTimeout(open, 3000); };
     };
     open();
+    return;
+  }
+  if (src === 'okx') {
+    const inst = okxInst(it), bar = OKX_BAR[tf];
+    const poll = async () => {
+      if (L.stop || document.hidden) return;
+      try {
+        const j = await getJSON(`${OKX}candles?instId=${inst}&bar=${bar}&limit=2`); if (L.stop) return;
+        for (const r of okxRows(j.data || [])) cb(r);
+        okxTicker([it]);
+      } catch {}
+    };
+    L.timer = setInterval(poll, 4000);
     return;
   }
   const limit = f.agg === 'm' ? 32 : f.agg ? 8 : 2;
@@ -1051,7 +1094,7 @@ $('#pctBtn').onclick = () => setScale('percentage');
 const SHORT = {STOCHRSI:'Stoch RSI', VOL:'Volume'};
 const lineColor = (x, k) => x.c[k] || PALETTE[k % PALETTE.length];
 let hoverIdx = null, legRaf = 0, LEG = null;
-function srcName(it){ return it.k === 'dex' ? (it.chainName || it.c) + ' · ' + (it.dex || 'DEX') : exOf(it) === 'BINANCE' ? 'Binance' : 'Binance ' + binSym(it); }
+function srcName(it){ return it.k === 'dex' ? (it.chainName || it.c) + ' · ' + (it.dex || 'DEX') : okxInst(it) ? 'OKX ' + okxInst(it) : exOf(it) === 'BINANCE' ? 'Binance' : 'Binance ' + binSym(it); }
 function compact(v){ v = Number(v); if (!isFinite(v)) return ''; const a = Math.abs(v); return a >= 1e12 ? (v / 1e12).toFixed(2) + 'T' : a >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (v / 1e3).toFixed(2) + 'K' : v.toFixed(a >= 100 ? 0 : 2); }
 function buildLegend(){
   const box = $('#legend'); box.textContent = ''; LEG = null;
@@ -1541,9 +1584,13 @@ function autoPatterns(b, piv, tol, sup, res, atr){
     if (!fl || sc > fl.sc) fl = {s, e, hgt, hi, lo, sc};
   }
   if (fl) { const up = fl.hgt > 0, target = up ? fl.hi + fl.hgt : fl.lo + fl.hgt;
-    out.push({name: up ? 'Bull flag' : 'Bear flag', i:fl.e, v: up ? b[fl.e].high : b[fl.e].low, flag:fl, target, why:'pole ' + fmtPct(fl.hgt / b[fl.s].close * 100) + ', target ' + fmtNum(Math.max(0, target))}); }
+    out.push({name: up ? 'Bull flag' : 'Bear flag', i:fl.e, v: up ? b[fl.e].high : b[fl.e].low, flag:fl, target, why:'pole ' + fmtPct(fl.hgt / b[fl.s].close * 100) + (target > 0 ? ', target ' + fmtNum(target) : '')}); }
   const keep = (a, c) => { const A = out.find(x => x.name === a), C = out.find(x => x.name === c); if (A && C) out.splice(out.indexOf(A.i < C.i ? A : C), 1); };
   keep('Double top', 'Double bottom'); keep('Head and shoulders', 'Inverse head and shoulders');
+  const BULL = /bottom|Inverse|Bull flag|Falling wedge|Ascending triangle/, BEAR = /Double top|^Head|Bear flag|Rising wedge|Descending triangle/;
+  const bu = out.filter(p => BULL.test(p.name)), be = out.filter(p => BEAR.test(p.name));
+  if (bu.length && be.length) { const nb = Math.max(...bu.map(p => p.i)), ne = Math.max(...be.map(p => p.i));
+    for (const p of (nb >= ne ? be : bu)) out.splice(out.indexOf(p), 1); }
   return out;
 }
 // major levels from long history (daily bars, ~2.7 years), so deep supports like -50% show up too
@@ -1555,6 +1602,7 @@ async function majorBars(it, fallback){
   let bars = null;
   if (b) { try { const j = await getJSON(`https://data-api.binance.vision/api/v3/klines?symbol=${b}&interval=1d&limit=1000`);
     bars = j.map(r => ({timestamp:+r[0], open:+r[1], high:+r[2], low:+r[3], close:+r[4]})); } catch {} }
+  else if (okxInst(it)) { try { bars = await okxBars(okxInst(it), '1Dutc', 1000); } catch {} }
   majorCache[key] = bars && bars.length > 60 ? bars : null;
   return majorCache[key] || fallback;
 }
@@ -1565,8 +1613,8 @@ function autoMajor(b, last, near){
   const cand = [];
   for (const c of cl) {
     const dist = (c.v - last) / last;
-    if (c.ps.length < 2 || Math.abs(dist) < 0.06 || dist < -0.85 || dist > 1.5) continue;
-    if (near.some(v => Math.abs(v - c.v) / c.v < 0.03)) continue;
+    if (c.ps.length < 2 || Math.abs(dist) < 0.06 || dist < -0.9 || dist > 4) continue;
+    if (near.some(v => Math.abs(v - c.v) / c.v < 0.06)) continue;
     const tol = c.v * 0.015, first = Math.min(...c.ps.map(p => p.i)); let held = 0, broke = 0;
     for (let i = first + 1; i < n; i++) {
       const x = b[i]; if (!(x.low <= c.v + tol && x.high >= c.v - tol)) continue;
@@ -1595,7 +1643,8 @@ function runAuto(){
   clearAuto();
   if (!M().auto || mode !== 'kc') return;
   const cat = M().autoCat;
-  const all = chart.getDataList(); if (all.length < 12) return;
+  const all = chart.getDataList(); if (!all.length) return;
+  if (all.length < 60 && srcOf(curItem()) !== 'tv') { autoThin(all, curItem()); return; }
   const off = Math.max(0, all.length - 300), b = all.slice(off), n = b.length, last = b[n - 1].close;
   const atr = autoAtr(b); if (!atr) return;
   const tol = atr * 0.6, k = Math.max(3, Math.round(n / 60));
@@ -1683,6 +1732,69 @@ function runAuto(){
     });
   }
 }
+// new pair / short history: analyse the finest timeframe that has enough candles, draw the price levels on this chart
+const thinCache = {};
+async function autoThin(all, it){
+  const seq = autoSeq, cat = M().autoCat, cur = TFI[M().tf].ms, t0 = all[0].timestamp, tN = all[all.length - 1].timestamp;
+  autoInfo = [{c:AUTO.trend, t:'Only ' + all.length + ' candle' + (all.length === 1 ? '' : 's') + ' on ' + M().tf, d:'reading a lower timeframe…'}]; renderAutoInfo();
+  // one request: the coarsest lower timeframe that gives ~150 candles over the pair's life (cached a minute, GeckoTerminal is rate limited)
+  const age = Date.now() - t0, finer = ['1D','4h','1h','15m','5m','1m'].filter(tf => TFI[tf].ms < cur);
+  let k0 = finer.findIndex(tf => age / TFI[tf].ms >= 150); if (k0 < 0) k0 = finer.length - 1;
+  let rows = null, used = finer[k0];
+  for (let k = k0; k < finer.length && k <= k0 + 1; k++) {   // the first bar of a week/day starts before the pair existed, so step finer once if short
+    const tf = finer[k], key = idOf(it) + '|' + tf, hit = thinCache[key]; let r = null;
+    if (hit && Date.now() - hit.t < 60000) r = hit.rows;
+    else { try { r = (await SRC[srcOf(it)](it, tf)).rows; thinCache[key] = {t:Date.now(), rows:r}; } catch {} }
+    if (seq !== autoSeq) return;
+    if (r && (!rows || r.length > rows.length)) { rows = r; used = tf; }
+    if (rows && rows.length >= 120) break;
+  }
+  if (seq !== autoSeq) return;
+  autoInfo = [];
+  if (!rows) { autoInfo.push({c:AUTO.trend, t:'Could not load the ' + (used || 'lower') + ' chart', d:'try again in a minute'}); renderAutoInfo(); return; }
+  if (rows.length < 30) { autoInfo.push({c:AUTO.trend, t:'Not enough history yet', d:rows.length + ' candles on ' + used + ' so far'}); renderAutoInfo(); return; }
+  const b = rows.slice(-400), n = b.length, last = b[n - 1].close, atr = autoAtr(b); if (!atr) return;
+  const tol = atr * 0.6, piv = autoPivots(b, Math.max(3, Math.round(n / 60)));
+  const ts = i => Math.min(tN, Math.max(t0, b[Math.min(n - 1, Math.max(0, i))].timestamp));
+  const add = (name, points, color, extendData) => { const styles = {line:{color}}; autoDefs.push({name, points, styles, extendData});
+    chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden}); };
+  const pctAway = v => fmtPct((v - last) / last * 100);
+  const vr = chart.getVisibleRange(), vis = all.slice(Math.max(0, vr.from), Math.max(vr.from + 1, vr.to));
+  const ppp = 560 / Math.max(1e-18, Math.max(...vis.map(x => x.high)) - Math.min(...vis.map(x => x.low))), tagYs = [];
+  const tagOff = v => { const y = v * ppp; const hit = tagYs.filter(o => Math.abs(o.y - y) < 19); const off = hit.length ? Math.max(...hit.map(o => o.off)) + 130 : 0; tagYs.push({y, off}); return off; };
+  autoInfo.push({c:AUTO.trend, t:'New pair: read from the ' + used + ' chart', d:n + ' candles'});
+  const ms = autoStructure(b, Math.max(4, Math.round(n / 45)));
+  autoBias = ms.trend > 0 ? 'Uptrend' : ms.trend < 0 ? 'Downtrend' : '';
+  if (cat.ms !== false) { const e = ms.ev[ms.ev.length - 1];
+    autoInfo.push({c: ms.trend > 0 ? AUTO.sup : ms.trend < 0 ? AUTO.res : AUTO.trend, t:'Structure: ' + (autoBias || 'no clear trend'), d: e ? e.t + (e.up ? ' up' : ' down') + ' at ' + fmtNum(e.from.v) : ''}); }
+  if (cat.lv) {
+    // near levels plus deeper ones from the whole life of the pair
+    const near = autoLevels(b, piv, tol, last, atr), deep = autoMajor(b, last, near.map(l => l.v)).filter(l => !l.cyc);
+    for (const l of [...near, ...deep]) {
+      const c = l.kind === 'res' ? AUTO.res : AUTO.sup, w = l.hi ? null : l.v * 0.006;
+      const firstTs = typeof l.first === 'number' && l.first < 1e11 ? ts(l.first) : Math.min(tN, Math.max(t0, l.first));
+      add('autoZone', [{timestamp:firstTs, value:l.hi || l.v + w}, {timestamp:tN, value:l.lo || l.v - w}], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + pctAway(l.v), off:tagOff(l.v)});
+      autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v), d:l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%, ' + pctAway(l.v)});
+    }
+    let lo = 0, hi = 0; for (let i = 1; i < n; i++) { if (b[i].low < b[lo].low) lo = i; if (b[i].high > b[hi].high) hi = i; }
+    if (hi > lo && b[hi].high > last * 1.05) { add('autoZone', [{timestamp:ts(hi), value:b[hi].high * 1.004}, {timestamp:tN, value:b[hi].high * 0.996}], AUTO.res, {l:'High ' + fmtNum(b[hi].high) + ' · ' + pctAway(b[hi].high), off:tagOff(b[hi].high)});
+      autoInfo.push({c:AUTO.res, t:'Top so far ' + fmtNum(b[hi].high), d:pctAway(b[hi].high)}); }
+  }
+  if (cat.fib) {
+    let hiI = 0, loI = 0; for (let i = 0; i < n; i++) { if (b[i].high > b[hiI].high) hiI = i; if (b[i].low < b[loI].low) loI = i; }
+    const hi = b[hiI].high, lo = b[loI].low, up = loI < hiI, r = hi - lo, at = x => up ? hi - r * x : lo + r * x, z0 = at(0.5), z1 = at(0.618);
+    if (Math.max(hiI, loI) < n - 2) { add('autoZone', [{timestamp:ts(Math.max(hiI, loI)), value:Math.max(z0, z1)}, {timestamp:tN, value:Math.min(z0, z1)}], AUTO.fib, {l:'Fib 0.5–0.618', a:0.06, off:tagOff((z0 + z1) / 2)});
+      autoInfo.push({c:AUTO.fib, t:'Fib pullback zone', d:fmtNum(Math.min(z0, z1)) + ' – ' + fmtNum(Math.max(z0, z1))}); }
+  }
+  if (cat.pat) {
+    const sup = autoTrend(b, piv.lo, tol, 'lo', atr), res = autoTrend(b, piv.hi, tol, 'hi', atr);
+    for (const p of autoPatterns(b, piv, tol, sup, res, atr)) {
+      if (isFinite(p.target) && p.target > 0 && !/Range|channel|Broadening/.test(p.name)) add('autoTarget', [{timestamp:tN, value:p.target}], AUTO.pat, {l:'Target ' + fmtNum(p.target) + '  ' + pctAway(p.target)});
+      autoInfo.push({c:AUTO.pat, t:p.name, d:p.why + ' (' + used + ')', pat:true});
+    }
+  }
+  renderAutoInfo();
+}
 function renderAutoInfo(){
   const box = $('#autoInfo'); box.textContent = '';
   if (!M().auto || mode !== 'kc') { box.hidden = true; return; }
@@ -1764,7 +1876,7 @@ function tickClock(){
 }
 
 // ---------- header ----------
-function exText(it){ return it.k === 'dex' ? (it.chainName || it.c) + ' · ' + (it.dex || 'DEX') : srcOf(it) === 'tv' ? (it.x || exOf(it)) + ' · TradingView' : exOf(it) === 'BINANCE' ? 'Binance spot' : (it.x || exOf(it)) + ' · Binance data'; }
+function exText(it){ return it.k === 'dex' ? (it.chainName || it.c) + ' · ' + (it.dex || 'DEX') : srcOf(it) === 'tv' ? (it.x || exOf(it)) + ' · TradingView' : okxInst(it) ? 'OKX spot' : exOf(it) === 'BINANCE' ? 'Binance spot' : (it.x || exOf(it)) + ' · Binance data'; }
 const fmtPx = q => q.u === 'cap' ? compact(q.p) : q.u === 'pct' ? q.p.toFixed(2) + '%' : fmtNum(q.p);
 function renderHeader(){
   const it = curItem();
@@ -1808,9 +1920,10 @@ let detId = null, DET = null;
 const PERF = [['1W',7],['1M',30],['3M',90],['6M',180],['YTD','ytd'],['1Y',365]];
 async function loadPerf(it){
   const id = idOf(it); if (perf[id] && Date.now() - perf[id].t < 6e5) return;
-  const b = binSym(it); if (!b) return;
+  const b = binSym(it), inst = okxInst(it); if (!b && !inst) return;
   try {
-    const rows = await getJSON(`https://data-api.binance.vision/api/v3/klines?symbol=${b}&interval=1d&limit=400`);
+    const rows = inst ? (await okxBars(inst, '1Dutc', 400)).map(r => [r.timestamp, r.open, r.high, r.low, r.close])
+      : await getJSON(`https://data-api.binance.vision/api/v3/klines?symbol=${b}&interval=1d&limit=400`);
     const closes = rows.map(r => [r[0], +r[4]]), last = closes[closes.length - 1][1], out = {t:Date.now()};
     const y0 = Date.UTC(new Date().getUTCFullYear(), 0, 1);
     for (const [k, n] of PERF) {
@@ -1956,6 +2069,14 @@ function connectTicker(){
   ws.onmessage = e => { const d = JSON.parse(e.data).data; if (d) setBin(d.s, +d.c, +d.o, +d.h, +d.l, +d.q); };
   ws.onclose = () => { if (tickWs === ws) { tickWs = null; setTimeout(connectTicker, 4000); } };
 }
+function okxTicker(items){
+  return Promise.all(items.map(it => getJSON(`${OKX}ticker?instId=${okxInst(it)}`).then(j => {
+    const d = j.data && j.data[0]; if (!d) return;
+    const c = +d.last, o = +d.open24h, id = idOf(it);
+    info[id] = {hi:+d.high24h, lo:+d.low24h, vol:+d.volCcy24h};
+    setPrice(id, c, o ? (c - o) / o * 100 : 0, c - o);
+  }).catch(() => {})));
+}
 async function refreshPrices(){
   const list = [...M().watch]; if (!list.some(w => idOf(w) === idOf(curItem()))) list.push(curItem());
   const jobs = [];
@@ -1964,6 +2085,8 @@ async function refreshPrices(){
   if (bn.length) jobs.push(getJSON('https://data-api.binance.vision/api/v3/ticker/24hr?type=MINI&symbols=' + encodeURIComponent(JSON.stringify(bn)))
     .then(rows => rows.forEach(bnRow))
     .catch(() => Promise.all(bn.map(s => getJSON('https://data-api.binance.vision/api/v3/ticker/24hr?type=MINI&symbol=' + s).then(bnRow).catch(() => {})))));
+  const okxList = [...list, ...alertItems()].filter((it, i, a) => okxInst(it) && a.findIndex(x => idOf(x) === idOf(it)) === i);
+  if (okxList.length) jobs.push(okxTicker(okxList));
   const byChain = {};
   for (const it of list) if (it.k === 'dex') (byChain[it.c] ||= []).push(it);
   for (const [c, its] of Object.entries(byChain)) for (let i = 0; i < its.length; i += 30) {
@@ -1988,9 +2111,11 @@ const CHAIN_NAMES = {ethereum:'Ethereum',bsc:'BNB Chain',solana:'Solana',base:'B
 const chainName = c => CHAIN_NAMES[c] || (c ? c[0].toUpperCase() + c.slice(1) : '');
 function renderChips(){ const cb = $('#chips'); cb.textContent = '';
   for (const [k, l] of CHIPS) cb.append(h('button', {class:'chip' + (k === chip ? ' on' : ''), text:l, onclick:() => { chip = k; renderChips(); runSearch($('#q').value); $('#q').focus(); }})); }
+let okxAll = null;
 function openSearch(initial){
   $('#searchDlg').hidden = false; const q = $('#q'); q.value = initial || ''; q.focus();
   renderChips(); runSearch(q.value);
+  if (!okxAll) getJSON(OKX + 'tickers?instType=SPOT').then(j => { okxAll = j.data || []; if (!$('#searchDlg').hidden) runSearch($('#q').value); }).catch(() => { okxAll = []; });
   if (!binAll) getJSON('https://data-api.binance.vision/api/v3/ticker/price').then(j => { binAll = j; if (!$('#searchDlg').hidden) runSearch($('#q').value); }).catch(() => { binAll = []; });
 }
 function closeDlgs(){ for (const d of ['#searchDlg','#indDlg','#setDlg','#alertDlg']) $(d).hidden = true; if (isPhone() && (tabNow === 's' || tabNow === 'i')) setTab('c'); }
@@ -2028,6 +2153,14 @@ async function runSearch(text){
     m.sort((a, b) => a.score - b.score);
     for (const x of m.slice(0, chip === 'binance' ? 60 : 6))
       out.push({item:{k:'tv', s:'BINANCE:' + x.s, n:x.s, x:'Binance'}, title:x.s, desc:x.base + ' / ' + x.qq + ' · Binance spot', right:fmtNum(x.p), price:x.p});
+  }
+  if ((chip === 'all' || chip === 'binance') && !link && okxAll) {   // OKX spot, for tokens not on Binance
+    const want = T.replace(/[-/]?(USDT|USDC|USD)$/, '') || T, m = [];
+    for (const r of okxAll) { const [base, qq] = String(r.instId).split('-'); if (!/^(USDT|USDC)$/.test(qq) || !base) continue;
+      if (base.startsWith(want)) m.push({base, qq, p:+r.last, o:+r.open24h, score:(base === want ? 0 : 1) + (qq === 'USDT' ? 0 : 0.1) + base.length * 0.01}); }
+    m.sort((a, b) => a.score - b.score);
+    for (const x of m.slice(0, chip === 'binance' ? 30 : 4))
+      out.push({item:{k:'tv', s:'OKX:' + x.base + x.qq, n:x.base + x.qq, x:'OKX'}, title:x.base + x.qq, desc:x.base + ' / ' + x.qq + ' · OKX spot', right:fmtNum(x.p), price:x.p, chg: x.o ? (x.p - x.o) / x.o * 100 : NaN});
   }
   if ((chip === 'all' || chip === 'tv') && !link && /^[A-Z0-9!._-]{1,20}:[A-Z0-9!._-]{1,30}$/.test(T)) {
     const [ex, sym] = T.split(':');
