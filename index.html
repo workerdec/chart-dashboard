@@ -106,6 +106,9 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
 .ai-l{display:none;padding:2px 10px 8px;border-top:1px solid var(--line)}
 .autoinfo.open .ai-l{display:block}
 .ai-l .ai-r.sub{padding-left:14px}
+#atip{position:fixed;z-index:60;max-width:270px;padding:8px 10px;border-radius:6px;background:#1c2027;border:1px solid rgba(255,255,255,0.08);box-shadow:0 6px 24px rgba(0,0,0,0.45);font-size:12px;line-height:1.45;color:#c9ccd3;pointer-events:none}
+#atip b{display:flex;align-items:center;gap:6px;color:#e6e9ee;font-weight:600;margin-bottom:3px}
+#atip b i{width:8px;height:8px;border-radius:2px;flex:none}
 .ai-l .ai-r{display:grid;grid-template-columns:8px auto 1fr;align-items:center;gap:8px;height:24px}
 .ai-l i{width:8px;height:8px;border-radius:2px}
 .ai-l small{color:var(--t3);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1766,7 +1769,7 @@ const targetAhead = (p, last) => isFinite(p.target) && p.target > 0 && !/Range|c
 const targetHit = (p, last) => isFinite(p.target) && p.target > 0 && ((PAT_BEAR.test(p.name) && p.target >= last) || (PAT_BULL.test(p.name) && p.target <= last));
 let autoInfo = [], autoDefs = [], autoBias = '';
 const AUTO_CATS = [['buy','Buy/DCA'],['lv','Levels'],['tl','Trendlines'],['ms','Structure'],['fib','Fib'],['pat','Patterns']];
-function clearAuto(){ autoSeq++; chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; renderAutoInfo(); }
+function clearAuto(){ const tb = $('#atip'); if (tb) tb.hidden = true; tipFor = null; autoSeq++; chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; renderAutoInfo(); }
 let autoAt = 0, autoPx = 0, autoAtrNow = 0;
 function autoLiveTick(bar, isNew){
   if (!M().auto) return;
@@ -1964,6 +1967,125 @@ function renderAutoInfo(){
     autoDefs.length ? h('button', {class:'btn', text:'Keep lines', title:'Copy these lines into your own drawings so you can edit them', onclick:keepAuto}) : null));
   box.append(list); box.hidden = false;
 }
+// ---------- hover explanations for what auto draw puts on the chart ----------
+const MS_TIP = {
+  HH:['Higher high', 'Price topped above its last top. A sign of an uptrend.'],
+  HL:['Higher low', 'The dip stopped above the last low. Buyers step in earlier each time, a sign of an uptrend.'],
+  LH:['Lower high', 'The bounce stopped under the last top. Sellers are in control, a sign of a downtrend.'],
+  LL:['Lower low', 'Price fell under its last low. A sign of a downtrend.'],
+  BOS:['Break of structure (BOS)', 'Price broke the last swing in the same direction as the trend, so the trend is continuing.'],
+  CHoCH:['Change of character (CHoCH)', 'Price broke the last swing against the trend. Often the first sign that the trend is turning.'],
+};
+const PAT_TIP = [
+  ['Double top', 'Two tops at about the same price. If price closes under the dip between them (the neckline), it often falls about as far as the pattern is tall.'],
+  ['Double bottom', 'Two lows at about the same price. If price closes above the top between them (the neckline), it often rises about as far as the pattern is tall.'],
+  ['Inverse head and shoulders', 'Three dips with the middle one deepest. A close above the neckline often starts a move up.'],
+  ['Head and shoulders', 'Three tops with the middle one highest. A close under the neckline often starts a move down.'],
+  ['Ascending triangle', 'Flat top with rising lows. Buyers keep pushing, so it often breaks up.'],
+  ['Descending triangle', 'Flat bottom with falling tops. Sellers keep pushing, so it often breaks down.'],
+  ['Symmetrical triangle', 'Price is squeezing between falling tops and rising lows. It usually breaks out hard, either way.'],
+  ['Rising wedge', 'Both lines rise but get closer. Buyers are tiring, so it often breaks down.'],
+  ['Falling wedge', 'Both lines fall but get closer. Sellers are tiring, so it often breaks up.'],
+  ['Ascending channel', 'Price moves up between two parallel lines. Buy near the bottom line, take profit near the top one.'],
+  ['Descending channel', 'Price moves down between two parallel lines. Bounces from the bottom line tend to stop at the top one.'],
+  ['Range', 'Price goes sideways between a top and a bottom line. Wait for a close outside it.'],
+  ['Broadening pattern', 'The swings get bigger each time. A wild, unsure market, so be careful.'],
+  ['Bull flag', 'A sharp rise (the pole) and then a small pullback. It often continues up by about the size of the pole.'],
+  ['Bear flag', 'A sharp drop (the pole) and then a small bounce. It often continues down by about the size of the pole.'],
+];
+const patTip = l => { const r = PAT_TIP.find(([k]) => l.startsWith(k)); return r ? [l, r[1]] : null; };
+function autoTip(d){
+  const e = d.extendData || {}, l = e.l || '', n = d.name;
+  if (n === 'autoMark') {
+    if (MS_TIP[l]) return MS_TIP[l];
+    if (l === 'LS' || l === 'RS' || l === 'Head') return [l === 'LS' ? 'Left shoulder' : l === 'RS' ? 'Right shoulder' : 'Head', 'Part of a head and shoulders pattern. The middle peak is the head; a close through the neckline confirms the pattern.'];
+    if (l === 'Top' || l === 'Bottom') return [l === 'Top' ? 'First top' : 'First bottom', 'The first ' + l.toLowerCase() + ' of a double ' + l.toLowerCase() + ' pattern.'];
+    return patTip(l) || [l, ''];
+  }
+  if (n === 'autoLine') {
+    if (MS_TIP[l]) return MS_TIP[l];
+    if (l === 'Neckline') return ['Neckline', 'The line the pattern must close through to be confirmed. The target only counts after that close.'];
+    if (l === 'Breakout') return ['Breakout', 'Price closed above the resistance trendline. A sign the move up may continue.'];
+    if (l === 'Breakdown') return ['Breakdown', 'Price closed under the support trendline. A sign the move down may continue.'];
+    if (l) return patTip(l) || [l, ''];
+    return e.up ? ['Resistance trendline', 'A line through tops that price kept respecting. Price often turns down at it; a close above it is a breakout.']
+                : ['Support trendline', 'A line through lows that price kept respecting. Price often bounces at it; a close under it is a breakdown.'];
+  }
+  if (n === 'autoTarget') {
+    if (/^DCA/.test(l)) return [l.replace(/ · /g, '  '), 'DCA (dollar-cost averaging) step: a planned buy level. Instead of buying all at once, split your money over these steps. The % is the share of your budget for this step; lower steps get more. Each step sits on a support, buy zone or deep level.'];
+    if (/^TP/.test(l)) return [l.replace(/ · /g, '  '), 'Take profit: a level above price where it may stall (resistance, past top or Fib extension). A good place to sell part of your position.'];
+    return [l || 'Target', 'Pattern target: where the confirmed pattern points to, measured by its height from the breakout.'];
+  }
+  if (n === 'autoShade') {
+    if (/^Accumulat/.test(l)) return [l === 'Accumulating' ? 'Accumulating now' : 'Accumulation', 'Price went sideways for a long time after a drop. This usually means buyers are quietly building positions. A close above the box often starts a move up; a close below it cancels the idea.' + (l === 'Accumulating' ? ' Price is still inside the box.' : '')];
+    if (!l) return ['Flag', 'The tight pullback after the pole of a flag. A close out of it in the pole\'s direction confirms the flag.'];
+    return patTip(l) || [l, ''];
+  }
+  if (n === 'autoZone') {
+    if (/^Buy zone/.test(l)) return [l.split(' · ')[0], 'The last quiet candle before a strong rally. Big buyers were active here and price has not closed under it since, so it often bounces when price comes back.'];
+    if (/^Fib/.test(l)) return ['Fib pullback zone (0.5 to 0.618)', 'After a big move, pullbacks often stop in this zone before the move continues. Traders call it the golden pocket.'];
+    if (/^Cycle low/.test(l)) return ['Cycle low', 'The lowest price in the long-term history. The last big support.'];
+    if (/^High/.test(l)) return ['Highest price so far', 'The top of this pair\'s history. The first big resistance on the way up.'];
+    if (/^R /.test(l)) return ['Resistance ' + l.slice(2).split(' · ')[0], 'Sellers pushed price down from here before' + (/×$/.test(l) ? ' (' + l.split(' · ').pop().replace('×', ' times') + ')' : '') + '. Price often stalls or turns down here again. A close above it turns it into support.'];
+    if (/^S /.test(l)) return ['Support ' + l.slice(2).split(' · ')[0], 'Buyers held price up here before' + (/×$/.test(l) ? ' (' + l.split(' · ').pop().replace('×', ' times') + ')' : '') + '. Price often bounces here again. A close under it turns it into resistance.'];
+  }
+  return l ? [l, ''] : null;
+}
+// hit test in pixels: marks and lines first, then zones, then box edges
+function autoHit(px, py){
+  if (!autoDefs.length || mode !== 'kc' || drawHidden) return null;
+  const sz = chart.getSize('candle_pane'); if (!sz) return null;
+  const W = sz.width, best = [];
+  const pxs = pts => { const r = chart.convertToPixel(pts, {paneId:'candle_pane'}); return Array.isArray(r) ? r : [r]; };
+  for (const d of autoDefs) {
+    const c = pxs(d.points), e = d.extendData || {}; if (!c.length || c.some(p => !p || !isFinite(p.y))) continue;
+    const n = d.name;
+    if (n === 'autoMark') { const y = c[0].y + (e.up ? -20 : 20); if (Math.abs(px - c[0].x) < 16 && Math.abs(py - y) < 11) best.push([0, 0, d]); }
+    else if (n === 'autoTarget') { if (px >= c[0].x - 4 && Math.abs(py - c[0].y) < 6) best.push([1, Math.abs(py - c[0].y), d]); }
+    else if (n === 'autoLine' && c.length > 1) {
+      const [a, b] = c, end = e.seg ? b.x : W; if (px < Math.min(a.x, b.x) - 4 || px > end + 4 || Math.abs(b.x - a.x) < 1e-6) continue;
+      const y = a.y + (b.y - a.y) / (b.x - a.x) * (px - a.x), dist = Math.abs(py - y);
+      if (dist < 6 || (e.seg && e.l && Math.abs(px - (a.x + b.x) / 2) < 22 && py > Math.min(a.y, b.y) - 22 && py < Math.min(a.y, b.y))) best.push([1, dist, d]);
+    }
+    else if (n === 'autoZone' && c.length > 1) {
+      const x0 = Math.min(c[0].x, c[1].x), y0 = Math.min(c[0].y, c[1].y), y1 = Math.max(c[0].y, c[1].y, y0 + 3);
+      if (px >= x0 && py >= y0 - 4 && py <= y1 + 4) best.push([2, y1 - y0, d]);
+    }
+    else if (n === 'autoShade' && c.length > 3) {
+      const xs = c.map(p => p.x), ys = c.map(p => p.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const onLabel = e.l && px >= c[0].x - 2 && px <= c[0].x + 120 && py >= c[0].y - 24 && py <= c[0].y;
+      const inside = px >= x0 && px <= x1 && py >= y0 && py <= y1, edge = inside && (px - x0 < 6 || x1 - px < 6 || py - y0 < 6 || y1 - py < 6);
+      if (onLabel || edge) best.push([3, 0, d]);
+    }
+  }
+  best.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  return best.length ? best[0][2] : null;
+}
+let tipRaf = 0, tipEv = null, tipFor = null;
+function showAutoTip(x, y, cx, cy){
+  const d = autoHit(x, y), box = $('#atip');
+  if (!d) { if (box) box.hidden = true; tipFor = null; return; }
+  const tt = autoTip(d); if (!tt || !tt[1]) { if (box) box.hidden = true; return; }
+  let b = box; if (!b) { b = h('div', {id:'atip'}); document.body.append(b); }
+  if (tipFor !== d) { b.textContent = ''; b.append(h('b', null, h('i', {style:'background:' + ((d.styles && d.styles.line && d.styles.line.color) || '#e6b259')}), tt[0]), h('div', {text:tt[1]})); tipFor = d; }
+  b.hidden = false;
+  const w = b.offsetWidth, hh = b.offsetHeight;
+  b.style.left = Math.max(8, Math.min(innerWidth - w - 8, cx + 14)) + 'px';
+  b.style.top = (cy + 18 + hh > innerHeight - 8 ? cy - hh - 12 : cy + 18) + 'px';
+}
+function hideAutoTip(){ const b = $('#atip'); if (b) b.hidden = true; tipFor = null; }
+$('#kc').addEventListener('pointermove', ev => {
+  if (ev.pointerType === 'touch' || ev.buttons || tool !== 'cursor') { if (ev.buttons) hideAutoTip(); return; }
+  tipEv = ev; if (tipRaf) return;
+  tipRaf = requestAnimationFrame(() => { tipRaf = 0; const r = $('#kc').getBoundingClientRect(); showAutoTip(tipEv.clientX - r.left, tipEv.clientY - r.top, tipEv.clientX, tipEv.clientY); });
+});
+$('#kc').addEventListener('pointerleave', hideAutoTip);
+// phone: tap a drawing to see what it is (hides after a few seconds)
+$('#kc').addEventListener('pointerup', ev => {
+  if (ev.pointerType !== 'touch' || tool !== 'cursor') return;
+  const r = $('#kc').getBoundingClientRect(); showAutoTip(ev.clientX - r.left, ev.clientY - r.top, ev.clientX, ev.clientY);
+  clearTimeout(hideAutoTip.t); hideAutoTip.t = setTimeout(hideAutoTip, 4500);
+});
 function keepAuto(){
   const defs = autoDefs.slice();
   for (const d of defs) chart.createOverlay({name:d.name, groupId:'u', points:d.points, styles:d.styles, extendData:d.extendData, ...overlayCallbacks()});
