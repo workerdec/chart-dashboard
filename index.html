@@ -95,7 +95,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
 .dbar .sep{height:18px;margin:0 3px}
 
 /* auto analysis summary */
-.autoinfo{position:absolute;z-index:5;right:76px;top:8px;max-width:330px;background:rgba(15,17,21,.94);border:1px solid var(--line2);border-radius:8px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.autoinfo{position:absolute;z-index:5;right:76px;top:8px;max-width:360px;background:rgba(15,17,21,.94);border:1px solid var(--line2);border-radius:8px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
 .ai-h{display:flex;align-items:center;gap:8px;height:30px;padding:0 4px 0 10px;white-space:nowrap}
 .ai-h b{font-weight:600;color:#e6b259}
 .ai-h span{color:var(--t1);overflow:hidden;text-overflow:ellipsis}
@@ -105,14 +105,22 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
 .autoinfo.open .ai-h svg{transform:rotate(180deg)}
 .ai-l{display:none;padding:2px 10px 8px;border-top:1px solid var(--line)}
 .autoinfo.open .ai-l{display:block}
+.autoinfo.open{width:360px}
 .ai-l .ai-r.sub{padding-left:14px}
-.ai-l .ai-s{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin:2px 0 4px}
+.ai-l .ai-s{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 2px}
 #atip{position:fixed;z-index:60;max-width:270px;padding:8px 10px;border-radius:6px;background:#1c2027;border:1px solid rgba(255,255,255,0.08);box-shadow:0 6px 24px rgba(0,0,0,0.45);font-size:12px;line-height:1.45;color:#c9ccd3;pointer-events:none}
 #atip b{display:flex;align-items:center;gap:6px;color:#e6e9ee;font-weight:600;margin-bottom:3px}
 #atip b i{width:8px;height:8px;border-radius:2px;flex:none}
-.ai-l .ai-r{display:grid;grid-template-columns:8px auto 1fr;align-items:center;gap:8px;height:24px}
-.ai-l i{width:8px;height:8px;border-radius:2px}
-.ai-l small{color:var(--t3);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-l .ai-r{display:grid;grid-template-columns:8px 1fr;align-items:start;gap:9px;padding:4px 0}
+.ai-l .ai-r span{display:block;color:var(--t1);font-size:12.5px;line-height:1.35}
+.ai-l i{width:8px;height:8px;border-radius:2px;margin-top:5px}
+.ai-l small{display:block;color:var(--t3);font-size:11.5px;line-height:1.4;margin-top:1px}
+.ai-p{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;padding:10px 0 8px;border-bottom:1px solid var(--line);margin-bottom:4px;font-size:12.5px}
+.ai-p span{color:var(--t3)}
+.ai-p b{font-weight:600;color:var(--t1)}
+.ai-p b.up{color:#3fcf8e}.ai-p b.down{color:#f0616d}.ai-p b.tp{color:#ff9f43}
+.ai-b{font-style:normal;font-size:11.5px;font-weight:600;padding:2px 7px;border-radius:10px}
+.ai-b.up{color:#3fcf8e;background:rgba(63,207,142,.12)}.ai-b.down{color:#f0616d;background:rgba(240,97,109,.12)}
 .ai-l p{margin:6px 0 0;color:var(--t3);font-size:11px}
 .autoinfo.open .ai-l{max-height:min(62vh,560px);overflow-y:auto}
 .ai-c{display:flex;gap:4px;padding:8px 0 6px;flex-wrap:wrap}
@@ -815,7 +823,8 @@ function cleanMeta(m){
   m.auto = m.auto === true;
   m.autoCat = m.autoCat && typeof m.autoCat === 'object' ? m.autoCat : {lv:true, tl:true, ms:true, fib:true, pat:true};
   if (m.autoCat.ms === undefined) m.autoCat.ms = true;
-  if (!m.autoClean) { m.autoCat = {buy:true, tp:true, lv:true, deep:false, acc:false, fib:false, tl:false, ms:false, pat:false}; m.autoClean = 1; }
+  if (!m.autoClean) { m.autoClean = 1; }
+  if (!m.autoOld) { m.autoCat = {buy:true, tp:true, lv:true, deep:true, acc:false, fib:true, tl:true, ms:true, pat:true}; m.autoOld = 1; }   // user wants the full old drawing back
   m.alerts = (Array.isArray(m.alerts) ? m.alerts : []).filter(a => a && validItem(a.it) && a.price > 0);
   // old default line colours clashed with the blue candles: move them to the new palette
   const OLD = {'#2962ff':'#f0e442', '#ff9800':'#cc79a7', '#e040fb':'#e69f00', '#00bcd4':'#4fd1c5', '#4caf50':'#56b4e9', '#ffeb3b':'#f0e442'};
@@ -1379,12 +1388,12 @@ function restoreDrawings(id){
 // and only the lines with the best record are drawn.
 const AUTO = {sup:'#27ad75', res:'#f0616d', trend:'#5b8cff', fib:'#b39dff', pat:'#e6b259', buy:'#19c39a', acc:'#36b9cc', dca:'#a5d65a', tp:'#ff9f43'};
 // drawing shapes used by auto draw (they also work as normal drawings after "Keep lines")
-const atag = (x, y, text, bg, align, base) => { const t = tag(x, y, text, bg, align, base); t.styles.color = isLight(bg) ? '#08090c' : '#fff'; t.styles.size = 10.5; t.styles.weight = 600; t.styles.paddingTop = t.styles.paddingBottom = 2; t.styles.paddingLeft = t.styles.paddingRight = 5; return t; };
+const atag = (x, y, text, bg, align, base) => { const t = tag(x, y, text, bg, align, base); t.styles.color = isLight(bg) ? '#08090c' : '#fff'; t.styles.size = 11; t.styles.weight = 600; t.styles.paddingTop = t.styles.paddingBottom = 3; t.styles.paddingLeft = t.styles.paddingRight = 6; return t; };
 const paneW = (bounding, c) => bounding && bounding.width ? bounding.width : Math.max(...c.map(p => p.x)) + 300;
 const inPane = (y, bounding) => !bounding || !bounding.height || (y > 8 && y < bounding.height - 8);
 // pixel box of a short zone (shared by drawing and hover)
-const zoneBox = (c, e) => { const x0 = Math.min(c[0].x, c[1].x), tw = e.l ? e.l.length * 6.1 + 12 : 0, x1 = Math.max(Math.max(c[0].x, c[1].x) + 8, x0 + tw);
-  const h = Math.max(16, Math.abs(c[1].y - c[0].y)); return {x0, x1, y0:(c[0].y + c[1].y) / 2 - h / 2, h}; };
+const zoneBox = (c, e) => { const x0 = Math.min(c[0].x, c[1].x), tw = e.l ? e.l.length * 6.5 + 14 : 0, x1 = Math.max(Math.max(c[0].x, c[1].x) + 8, x0 + tw);
+  const h = Math.max(18, Math.abs(c[1].y - c[0].y)); return {x0, x1, y0:(c[0].y + c[1].y) / 2 - h / 2, h}; };
 // support / resistance zone: band from the first touch to the right edge, price tag on the right
 K.registerOverlay({
   name:'autoZone', totalStep:3, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
@@ -1392,9 +1401,11 @@ K.registerOverlay({
     if (c.length < 2) return [];
     const col = ovColor(overlay), e = overlay.extendData || {}, W = paneW(bounding, c);
     if (e.box) {   // short box: from where it formed to a little past the last candle, label inside
-      const b = zoneBox(c, e), out = [{type:'rect', attrs:{x:b.x0, y:b.y0, width:b.x1 - b.x0, height:b.h}, styles:{style:'stroke_fill', color:hexA(col, e.a || 0.14), borderColor:hexA(col, 0.8), borderSize:1, borderRadius:2}}];
-      if (e.l && inPane(b.y0 + b.h / 2, bounding)) out.push({type:'text', ignoreEvent:true, attrs:{x:b.x0 + 5, y:b.y0 + b.h / 2, text:e.l, align:'left', baseline:'middle'},
-        styles:{color:col, backgroundColor:'rgba(0,0,0,0)', borderColor:'rgba(0,0,0,0)', size:10.5, family:CF, weight:600, paddingLeft:0, paddingRight:0, paddingTop:0, paddingBottom:0}});
+      const b = zoneBox(c, e); if (!inPane(b.y0 + b.h / 2, bounding)) return [];
+      const tw = e.l ? e.l.length * 6.5 + 14 : 0; if (b.x1 > W - 2) { b.x1 = W - 2; b.x0 = Math.max(0, Math.min(b.x0, b.x1 - tw)); }   // keep the label inside the chart on narrow screens
+      const out = [{type:'rect', attrs:{x:b.x0, y:b.y0, width:b.x1 - b.x0, height:b.h}, styles:{style:'stroke_fill', color:hexA(col, e.a || 0.14), borderColor:hexA(col, 0.8), borderSize:1, borderRadius:2}}];
+      if (e.l && inPane(b.y0 + b.h / 2, bounding)) out.push({type:'text', ignoreEvent:true, attrs:{x:b.x0 + 3, y:b.y0 + b.h / 2, text:e.l, align:'left', baseline:'middle'},
+        styles:{color:col, backgroundColor:'rgba(8,9,12,0.82)', borderColor:'rgba(0,0,0,0)', borderRadius:3, size:11, family:CF, weight:600, paddingLeft:3, paddingRight:3, paddingTop:2, paddingBottom:2}});
       return out;
     }
     const x0 = Math.min(c[0].x, c[1].x), y0 = Math.min(c[0].y, c[1].y), hh = Math.max(3, Math.abs(c[1].y - c[0].y)), ym = y0 + hh / 2;
@@ -1466,7 +1477,13 @@ function autoPivots(b, k){
   return {hi, lo};
 }
 // horizontal levels: cluster pivots by price, then backtest each level bar by bar
+const strWord = s => s >= 70 ? 'strong' : s >= 45 ? 'ok' : 'weak';
+// prices on chart labels: whole numbers from 1,000 up (82,232 instead of 82,232.57)
+const fmtLbl = v => Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : fmtNum(v);
+// % away on labels: one decimal, none from 10% up
+const pctShort = x => (x > 0 ? '+' : x < 0 ? MINUS : '') + Math.abs(x).toFixed(Math.abs(x) >= 10 ? 0 : 1) + '%';
 function autoLevels(b, piv, tol, last, atr){
+  let vAvg = 0; for (const x of b) vAvg += x.volume || 0; vAvg /= b.length;
   const pts = [...piv.hi.map(p => ({...p, t:'h'})), ...piv.lo.map(p => ({...p, t:'l'}))].sort((a, c) => a.v - c.v);
   const cl = [];
   for (const p of pts) { const c = cl[cl.length - 1]; if (c && p.v - c.v < tol) { c.ps.push(p); c.v = c.ps.reduce((s, x) => s + x.v, 0) / c.ps.length; } else cl.push({v:p.v, ps:[p]}); }
@@ -1474,10 +1491,11 @@ function autoLevels(b, piv, tol, last, atr){
   for (const c of cl) {
     if (c.ps.length < 2) continue;
     const first = Math.min(...c.ps.map(p => p.i));
-    let held = 0, broke = 0;
+    let held = 0, broke = 0, vol = 0, vc = 0, lastT = first;
     for (let i = first + 1; i < b.length; i++) {
       const x = b[i], touch = x.low <= c.v + tol * 0.5 && x.high >= c.v - tol * 0.5;
       if (!touch) continue;
+      vol += x.volume || 0; vc++; lastT = i;
       const prev = b[i - 1].close;
       if ((prev > c.v && x.close < c.v - tol * 0.5) || (prev < c.v && x.close > c.v + tol * 0.5)) broke++; else held++;
     }
@@ -1486,8 +1504,13 @@ function autoLevels(b, piv, tol, last, atr){
     const dist = Math.abs(c.v - last) / atr;
     if (dist > 10 || dist < 0.25) continue;   // skip levels price is sitting on right now
     const vs = c.ps.map(p => p.v);
-    out.push({v:c.v, lo:Math.max(Math.min(...vs), c.v - tol * 0.3), hi:Math.min(Math.max(...vs), c.v + tol * 0.3), first, touches:c.ps.length, rate,
-      score: c.ps.length * 2 + rate * 4 + recent * 2 - dist * 0.6, kind: c.v >= last ? 'res' : 'sup'});
+    // strength 0-100: touches, how often it held, volume traded there, how recent
+    const str = Math.round(Math.min(c.ps.length, 6) / 6 * 30 + rate * 30 + (vAvg && vc ? Math.min(vol / vc / vAvg, 2) / 2 * 20 : 10) + lastT / b.length * 20);
+    // flipped: price was on the other side of it a few candles ago (resistance broken -> support, or the other way)
+    const k0 = Math.max(0, b.length - 12), was = b[k0].close > c.v, now = last > c.v;
+    let flip = null; if (was !== now) { let ago = 0; for (let i = b.length - 1; i > k0; i--) if ((b[i - 1].close > c.v) !== (b[i].close > c.v)) { ago = b.length - i; break; } flip = {up: now, ago}; }
+    out.push({v:c.v, lo:Math.max(Math.min(...vs), c.v - tol * 0.3), hi:Math.min(Math.max(...vs), c.v + tol * 0.3), first, touches:c.ps.length, rate, str, flip,
+      score: c.ps.length * 2 + rate * 4 + recent * 2 - dist * 0.6 + (flip ? 3 : 0), kind: c.v >= last ? 'res' : 'sup'});
   }
   const pick = kind => out.filter(l => l.kind === kind && l.rate >= 0.6).sort((a, c) => c.score - a.score).slice(0, 2);
   return [...pick('res'), ...pick('sup')];
@@ -1642,7 +1665,7 @@ function autoMajor(b, last, near){
     }
     const rate = held / Math.max(1, held + broke); if (rate < 0.5) continue;
     const recent = Math.max(...c.ps.map(p => p.i)) / n;
-    cand.push({v:c.v, dist, first:b[first].timestamp, touches:c.ps.length, rate, score: c.ps.length * 2 + rate * 3 + recent * 1.5, kind: c.v > last ? 'res' : 'sup'});
+    cand.push({v:c.v, dist, first:b[first].timestamp, touches:c.ps.length, rate, str: Math.round(Math.min(c.ps.length, 6) / 6 * 35 + rate * 40 + recent * 25), score: c.ps.length * 2 + rate * 3 + recent * 1.5, kind: c.v > last ? 'res' : 'sup'});
   }
   const out = [];
   const pick = (kind, max) => { for (const l of cand.filter(x => x.kind === kind).sort((a, c) => c.score - a.score)) {
@@ -1668,7 +1691,9 @@ function autoDemand(b, atr, last){
     for (let j = i + 5; j < n; j++) { if (b[j].close < lo) { dead = true; break; } const tt = b[j].low <= top; if (tt && !inT) tests++; inT = tt; }
     const dist = (last - top) / atr;
     if (dead || tests > 2 || dist > 14 || dist < 0.3) continue;
-    out.push({lo, hi:top, i, push, tests, score: Math.min(push, 5) + (tests ? 0 : 1.5) - tests * 0.8 + i / n * 1.5 - dist * 0.1});
+    let va = 0, vz = 0; for (const x of b) va += x.volume || 0; for (let j = i; j <= Math.min(n - 1, i + 3); j++) vz += b[j].volume || 0;
+    const volR = va ? vz / Math.min(4, n - i) / (va / n) : 1;
+    out.push({lo, hi:top, i, push, tests, volR, score: Math.min(push, 5) + (tests ? 0 : 1.5) - tests * 0.8 + i / n * 1.5 - dist * 0.1});
   }
   out.sort((a, c) => c.score - a.score);
   const keep = []; for (const z of out) if (!keep.some(k => z.lo <= k.hi * 1.003 && z.hi >= k.lo * 0.997)) keep.push(z);
@@ -1722,16 +1747,17 @@ function autoDca(last, cands){
 // draws buy zones + accumulation boxes, returns the buy-side levels for the DCA ladder
 function drawBuy(b, last, atr, T, add, tagOff, pctAway, lv, fibZ, note){
   const n = b.length, P = (i, v) => ({timestamp:T(i), value:v}), cands = [];
-  for (const l of lv) if (l.kind === 'sup') cands.push({v:l.v, score:1.5 + Math.min(l.touches, 5) * 0.4, why:'support'});
+  for (const l of lv) if (l.kind === 'sup') cands.push({v:l.v, score:1 + (l.str || 50) / 25, why:'support'});
   if (fibZ && fibZ.hi < last) cands.push({v:(fibZ.lo + fibZ.hi) / 2, score:1.5, why:'fib'});
   autoDemand(b, atr, last).forEach((z, j) => {
     const conf = [lv.some(l => l.kind === 'sup' && l.v >= z.lo - atr * 0.3 && l.v <= z.hi + atr * 0.3) && 'support',
       fibZ && z.lo <= fibZ.hi && z.hi >= fibZ.lo && 'fib zone'].filter(Boolean);
+    z.str = Math.round(Math.min(z.push, 5) / 5 * 35 + [25, 15, 5][z.tests] + Math.min(z.volR, 2) / 2 * 20 + Math.min(conf.length, 2) * 10);
     autoDC = j ? 'deep' : 'buy';
-    add('autoZone', [P(z.i, z.hi), P(n - 1, z.lo)], AUTO.buy, {l:'Buy zone ' + (j + 1) + ' · ' + pctAway(z.hi), a:0.2, box:1});
+    add('autoZone', [P(z.i, z.hi), P(n - 1, z.lo)], AUTO.buy, {l:'Buy zone ' + (j + 1) + ' · ' + pctAway(z.hi) + ' · ' + strWord(z.str), s:z.str, a:0.2, box:1});
     autoInfo.push({c:AUTO.buy, t:'Buy zone ' + (j + 1) + ': ' + fmtNum(z.lo) + ' – ' + fmtNum(z.hi),
-      d:'base of a ' + z.push.toFixed(1) + '× ATR rally, ' + (z.tests ? 'tested ' + z.tests + '×' : 'not retested yet') + (conf.length ? ', lines up with ' + conf.join(' + ') : '') + ', ' + pctAway(z.hi) + note});
-    cands.push({v:(z.hi + z.lo) / 2, score:3 + conf.length, why:'buy zone'});
+      d:'strength ' + z.str + '%, base of a ' + z.push.toFixed(1) + '× ATR rally, ' + (z.tests ? 'tested ' + z.tests + '×' : 'not retested yet') + (conf.length ? ', lines up with ' + conf.join(' + ') : '') + ', ' + pctAway(z.hi) + note});
+    cands.push({v:(z.hi + z.lo) / 2, score:3 + conf.length + z.str / 50, why:'buy zone'});
   });
   for (const a of autoAccum(b)) {
     const end = a.now ? n - 1 : a.e; autoDC = 'acc';
@@ -1757,7 +1783,7 @@ function autoUpCands(b, last, lv){
 }
 function autoBoxAt(v, text, color, tEnd, add){
   for (const d of autoDefs) {
-    if (d.name !== 'autoZone' || !d.extendData || !/^(R|S|Buy zone|Cycle|High)/.test(d.extendData.l || '')) continue;
+    if (d.name !== 'autoZone' || !d.extendData || !/^(R |S |Buy zone|Cycle|High)/.test(d.extendData.l || '')) continue;
     const a = d.points[0].value, b = d.points[1].value, lo = Math.min(a, b) * 0.99, hi = Math.max(a, b) * 1.01;
     if (v >= lo && v <= hi) { d.extendData = {...d.extendData, l:d.extendData.l + ' · ' + text}; if (d.id) chart.overrideOverlay({id:d.id, extendData:d.extendData}); return; }
   }
@@ -1775,16 +1801,29 @@ function drawTp(last, cands, tEnd, add, pctAway, tagOff, atr){
   for (const c of cl.sort((a, d) => d.score - a.score)) { if (pick.length >= 3) break; if (pick.some(p => Math.abs(p.v - c.v) / p.v < 0.05)) continue; pick.push(c); }
   if (!pick.length) return;
   pick.sort((a, c) => a.v - c.v);
+  autoSum.tp = pick;
+  if (autoPlan && autoPlan.avg > autoPlan.stop) { const rr = (pick[0].v - autoPlan.avg) / (autoPlan.avg - autoPlan.stop); autoSum.rr = rr;
+    autoInfo.push({c:AUTO.tp, t:'Risk / reward 1 : ' + rr.toFixed(1), d:'avg entry ' + fmtNum(autoPlan.avg) + ' → TP 1 ' + fmtNum(pick[0].v) + ', stop ' + fmtNum(autoPlan.stop) + (rr < 1 ? ' (less reward than risk)' : rr >= 2 ? ' (good)' : ''), tp:true}); }
   pick.forEach((s, j) => { autoDC = j < 2 ? 'tp' : 'deep'; if (M().autoCat[autoDC]) autoBoxAt(s.v, 'TP ' + (j + 1) + ' ' + pctAway(s.v), AUTO.tp, tEnd, add); });
   autoInfo.push({c:AUTO.tp, t:'Targets: ' + pick.map((s, j) => 'TP' + (j + 1) + ' ' + pctAway(s.v)).join(', '), d:'take profit in steps', tp:true});
   pick.forEach((s, j) => autoInfo.push({c:AUTO.tp, t:'TP ' + (j + 1) + ' at ' + fmtNum(s.v), d:pctAway(s.v) + ' · ' + s.why.join(' + '), tp:true}));
 }
-function drawDca(last, cands, tEnd, add, pctAway, tagOff){
+let autoPlan = null, autoSum = {};
+function drawDca(last, cands, tEnd, add, pctAway, tagOff, atr){
+  autoPlan = null;
   const d = autoDca(last, cands); if (!d) return;
   autoDC = 'buy';
   d.steps.forEach((s, j) => autoBoxAt(s.v, 'DCA ' + (j + 1) + ' ' + s.w + '% ' + pctAway(s.v), AUTO.dca, tEnd, add));
+  // stop-loss: just under the next level below the last buy, or a bit under the last buy if there is none close
+  const low = d.steps[d.steps.length - 1].v, gap = Math.max(0.04, (atr || 0) * 1.5 / last);
+  const under = cands.map(c => c.v).filter(v => v < low * 0.985 && v > low * 0.85).sort((a, c) => c - a)[0];
+  const stop = under ? under * 0.985 : low * (1 - gap);
+  autoPlan = {avg:d.avg, stop}; autoSum.buy = d; autoSum.stop = stop;
+  if (M().autoCat.buy) { const all = chart.getDataList(), t0 = all.length ? all[Math.max(0, all.length - 30)].timestamp : tEnd;
+    add('autoZone', [{timestamp:t0, value:stop * 1.002}, {timestamp:tEnd, value:stop * 0.998}], AUTO.res, {l:'Stop ' + fmtLbl(stop) + ' ' + pctAway(stop), box:1, a:0.1, stop:1}); }
   autoInfo.push({c:AUTO.dca, t:'DCA plan: ' + d.steps.length + ' buy' + (d.steps.length > 1 ? 's' : '') + ', avg ' + fmtNum(d.avg), d:pctAway(d.avg) + ' from now' + (autoBias === 'Downtrend' ? ', trend is down so the lower buys are more likely to fill' : ''), dca:true});
   d.steps.forEach((s, j) => autoInfo.push({c:AUTO.dca, t:'DCA ' + (j + 1) + ' · ' + s.w + '% at ' + fmtNum(s.v), d:pctAway(s.v) + ' · ' + s.why.join(' + '), dca:true}));
+  autoInfo.push({c:AUTO.res, t:'Stop-loss ' + fmtNum(stop), d:fmtPct((stop - d.avg) / d.avg * 100) + ' from your average entry' + (under ? ', just under the next support' : ''), dca:true, stopRow:true});
 }
 const PAT_BULL = /bottom|Inverse|Bull flag|Falling wedge|Ascending triangle/, PAT_BEAR = /Double top|^Head|Bear flag|Rising wedge|Descending triangle/;
 const targetAhead = (p, last) => isFinite(p.target) && p.target > 0 && !/Range|channel|Broadening/.test(p.name) && !(PAT_BEAR.test(p.name) && p.target >= last) && !(PAT_BULL.test(p.name) && p.target <= last);
@@ -1794,7 +1833,7 @@ const AUTO_CATS = [['buy','Buy/DCA'],['tp','Targets'],['lv','Levels'],['deep','M
 // everything is always analysed (and listed in the panel); the chips only pick what gets drawn on the chart
 const AUTO_ALL = {lv:1, tl:1, ms:1, fib:1, pat:1, buy:1};
 let autoDC = 'lv';   // category of what is being drawn right now
-function clearAuto(){ const tb = $('#atip'); if (tb) tb.hidden = true; tipFor = null; autoSeq++; chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; renderAutoInfo(); }
+function clearAuto(){ autoSum = {}; const tb = $('#atip'); if (tb) tb.hidden = true; tipFor = null; autoSeq++; chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; renderAutoInfo(); }
 let autoAt = 0, autoPx = 0, autoAtrNow = 0;
 function autoLiveTick(bar, isNew){
   if (!M().auto) return;
@@ -1820,7 +1859,7 @@ function runAuto(){
     const id = chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden});
     autoDefs.push({name, points, styles, extendData, id});
   };
-  const pctAway = v => fmtPct((v - last) / last * 100);
+  const pctAway = v => pctShort((v - last) / last * 100);
   const few = n < 40;   // too little history for trendlines and patterns (levels and structure still work)
   const sup = few ? null : autoTrend(b, piv.lo, tol, 'lo', atr), res = few ? null : autoTrend(b, piv.hi, tol, 'hi', atr);
   const pats = cat.pat && !few ? autoPatterns(b, piv, tol, sup, res, atr) : [];
@@ -1845,8 +1884,8 @@ function runAuto(){
   const closest = {}; for (const l of nearLv) if (!closest[l.kind] || Math.abs(l.v - last) < Math.abs(closest[l.kind].v - last)) closest[l.kind] = l;
   for (const l of nearLv) {
     const c = l.kind === 'res' ? AUTO.res : AUTO.sup; autoDC = 'lv';
-    add('autoZone', [pt(l.first, l.hi), pt(n - 1, l.lo)], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + l.touches + '×', off:tagOff(l.v)});
-    autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v), d: l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%, ' + pctAway(l.v)});
+    add('autoZone', [pt(l.first, l.hi), pt(n - 1, l.lo)], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtLbl(l.v) + ' · ' + l.touches + '×' + (l.flip ? ' · flipped' : ''), s:l.str, off:tagOff(l.v)});
+    autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v) + (l.flip ? ' (flipped)' : ''), d: (l.flip ? (l.flip.up ? 'broke above it ' : 'broke under it ') + l.flip.ago + ' candle' + (l.flip.ago === 1 ? '' : 's') + ' ago, now ' + (l.kind === 'sup' ? 'support' : 'resistance') + ', ' : '') + 'strength ' + l.str + '% (' + l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%), ' + pctAway(l.v), lv:l.kind});
   }
   autoDC = 'tl';
   if (cat.tl) for (const [t, nm, up] of [[sup, 'Support trendline', 0], [res, 'Resistance trendline', 1]]) if (t) {
@@ -1892,7 +1931,7 @@ function runAuto(){
       if (seq !== autoSeq || !M().auto || mode !== 'kc') return;
       const maj = mb && mb.length >= 60 ? autoMajor(mb, last, allLv.map(l => l.v)) : [];
       if (buyC) { for (const l of maj) if (l.kind === 'sup') buyC.push({v:l.v, score: l.cyc ? 2 : 2 + Math.min(l.touches, 5) * 0.3, why: l.cyc ? 'cycle low' : 'major support'});
-        drawDca(last, buyC, tEnd, add, pctAway, tagOff);
+        drawDca(last, buyC, tEnd, add, pctAway, tagOff, atr);
         const up = autoUpCands(b, last, allLv); for (const l of maj) if (l.kind === 'res') up.push({v:l.v, score:2 + Math.min(l.touches, 5) * 0.3, why:'major resistance'});
         drawTp(last, up, tEnd, add, pctAway, tagOff, atr); }
       if (!cat.lv) { renderAutoInfo(); return; }
@@ -1900,7 +1939,7 @@ function runAuto(){
       for (const l of maj) {
         const c = l.kind === 'res' ? AUTO.res : AUTO.sup, pc = fmtPct(l.dist * 100), w = l.v * 0.008;
         add('autoZone', [{timestamp:Math.max(l.first, t0), value:l.v + w}, {timestamp:all[all.length - 1].timestamp, value:l.v - w}], c,
-          {l:(l.cyc ? 'Cycle low ' : l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + pc, a:0.09, off:tagOff(l.v)});
+          {l:(l.cyc ? 'Cycle low ' : l.kind === 'res' ? 'R ' : 'S ') + fmtLbl(l.v) + ' · ' + pctShort(l.dist * 100), s:l.str, a:0.09, off:tagOff(l.v)});
         autoInfo.push({c, t:(l.cyc ? 'Cycle low ' : l.kind === 'res' ? 'Major resistance ' : 'Major support ') + fmtNum(l.v),
           d:(l.cyc ? 'lowest price in ' + Math.round(mb.length / 30) + ' months' : l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%') + ', ' + pc, deep:true});
       }
@@ -1935,7 +1974,7 @@ async function autoThin(all, it){
   const ts = i => Math.min(tN, Math.max(t0, b[Math.min(n - 1, Math.max(0, i))].timestamp));
   const add = (name, points, color, extendData) => { if (!M().autoCat[autoDC]) return; const styles = {line:{color}};
     const id = chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden}); autoDefs.push({name, points, styles, extendData, id}); };
-  const pctAway = v => fmtPct((v - last) / last * 100);
+  const pctAway = v => pctShort((v - last) / last * 100);
   const vr = chart.getVisibleRange(), vis = all.slice(Math.max(0, vr.from), Math.max(vr.from + 1, vr.to));
   const ppp = 560 / Math.max(1e-18, Math.max(...vis.map(x => x.high)) - Math.min(...vis.map(x => x.low))), tagYs = [];
   const tagOff = v => { const y = v * ppp; const hit = tagYs.filter(o => Math.abs(o.y - y) < 19); const off = hit.length ? Math.max(...hit.map(o => o.off)) + 136 : 0; tagYs.push({y, off}); return off; };
@@ -1952,7 +1991,7 @@ async function autoThin(all, it){
   if (cat.buy !== false) {
     const c = drawBuy(b, last, atr, ts, add, tagOff, pctAway, near, fibZ, ' (' + used + ')');
     for (const l of deep) if (l.kind === 'sup') c.push({v:l.v, score: l.cyc ? 2 : 2 + Math.min(l.touches, 5) * 0.3, why: l.cyc ? 'lowest so far' : 'major support'});
-    drawDca(last, c, tN, add, pctAway, tagOff);
+    drawDca(last, c, tN, add, pctAway, tagOff, atr);
     const up = autoUpCands(b, last, near); for (const l of deep) if (l.kind === 'res') up.push({v:l.v, score:2 + Math.min(l.touches, 5) * 0.3, why:'major resistance'});
     drawTp(last, up, tN, add, pctAway, tagOff, autoAtrNow * 1.5 > atr ? autoAtrNow * 1.5 : atr);
   }
@@ -1962,12 +2001,12 @@ async function autoThin(all, it){
     for (const l of [...near, ...deep.filter(l => !l.cyc)]) {
       const c = l.kind === 'res' ? AUTO.res : AUTO.sup, w = l.hi ? null : l.v * 0.006; autoDC = near.includes(l) ? 'lv' : 'deep';
       const firstTs = typeof l.first === 'number' && l.first < 1e11 ? ts(l.first) : Math.min(tN, Math.max(t0, l.first));
-      add('autoZone', [{timestamp:firstTs, value:l.hi || l.v + w}, {timestamp:tN, value:l.lo || l.v - w}], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + pctAway(l.v), off:tagOff(l.v)});
-      autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v), d:l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%, ' + pctAway(l.v)});
+      add('autoZone', [{timestamp:firstTs, value:l.hi || l.v + w}, {timestamp:tN, value:l.lo || l.v - w}], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtLbl(l.v) + ' · ' + l.touches + '×' + (l.flip ? ' · flipped' : ''), s:l.str, off:tagOff(l.v)});
+      autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v) + (l.flip ? ' (flipped)' : ''), d: (l.flip ? (l.flip.up ? 'broke above it ' : 'broke under it ') + l.flip.ago + ' candle' + (l.flip.ago === 1 ? '' : 's') + ' ago, now ' + (l.kind === 'sup' ? 'support' : 'resistance') + ', ' : '') + 'strength ' + l.str + '% (' + l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%), ' + pctAway(l.v), lv:l.kind});
     }
     let lo = 0, hi = 0; for (let i = 1; i < n; i++) { if (b[i].low < b[lo].low) lo = i; if (b[i].high > b[hi].high) hi = i; }
     autoDC = 'lv';
-    if (hi > lo && b[hi].high > last * 1.05) { add('autoZone', [{timestamp:ts(hi), value:b[hi].high * 1.004}, {timestamp:tN, value:b[hi].high * 0.996}], AUTO.res, {l:'High ' + fmtNum(b[hi].high) + ' · ' + pctAway(b[hi].high), box:1});
+    if (hi > lo && b[hi].high > last * 1.05) { add('autoZone', [{timestamp:ts(hi), value:b[hi].high * 1.004}, {timestamp:tN, value:b[hi].high * 0.996}], AUTO.res, {l:'High ' + fmtLbl(b[hi].high) + ' · ' + pctAway(b[hi].high), box:1});
       autoInfo.push({c:AUTO.res, t:'Top so far ' + fmtNum(b[hi].high), d:pctAway(b[hi].high)}); }
   }
   autoDC = 'fib';
@@ -1991,13 +2030,32 @@ function renderAutoInfo(){
   const box = $('#autoInfo'); box.textContent = '';
   if (!M().auto || mode !== 'kc') { box.hidden = true; return; }
   const pats = autoInfo.filter(x => x.pat || x.alert);
-  box.append(h('div', {class:'ai-h'}, h('b', {text:'Auto'}), h('span', {text: [autoBias, ...pats.map(p => p.t)].filter(Boolean).join(' · ') || 'No clear pattern'}),
+  const bias = autoBias ? h('em', {class:'ai-b ' + (autoBias === 'Uptrend' ? 'up' : 'down'), text:(autoBias === 'Uptrend' ? '▲ ' : '▼ ') + autoBias}) : null;
+  box.append(h('div', {class:'ai-h'}, h('b', {text:'Auto'}), bias, h('span', {text: pats.map(p => p.t).join(' · ') || (autoBias ? '' : 'No clear trend')}),
     h('button', {title:'Details and options', svg:svg(ICON.chev), onclick:() => box.classList.toggle('open')})));
   const list = h('div', {class:'ai-l'});
+  // the plan in plain words
+  const S = autoSum, pl = h('div', {class:'ai-p'}), row = (k, v, cls) => pl.append(h('span', {text:k}), h('b', {class:cls || '', text:v}));
+  if (S.buy) row('Buy', S.buy.steps.map(s => fmtLbl(s.v)).join(' → ') + '  (avg ' + fmtLbl(S.buy.avg) + ')', 'up');
+  if (S.tp && S.tp.length) row('Sell', S.tp.map(s => fmtLbl(s.v)).join(' · '), 'tp');
+  if (S.stop) row('Stop', fmtLbl(S.stop) + '  (' + pctShort((S.stop - S.buy.avg) / S.buy.avg * 100) + ' from avg)', 'down');
+  if (isFinite(S.rr)) row('Reward', '1 : ' + S.rr.toFixed(1) + (S.rr >= 2 ? '  good' : S.rr < 1 ? '  poor' : ''), S.rr >= 2 ? 'up' : S.rr < 1 ? 'down' : '');
+  if (pl.childNodes.length) list.append(pl);
   const chips = h('div', {class:'ai-c'});
   for (const [k, l] of AUTO_CATS) chips.append(h('button', {class: M().autoCat[k] ? 'on' : '', text:l, onclick:() => { M().autoCat[k] = !M().autoCat[k]; touchMeta(); runAuto(); $('#autoInfo').classList.add('open'); }}));
   list.append(h('div', {class:'ai-s', text:'Show on chart'}), chips);
-  for (const x of autoInfo) list.append(h('div', {class:'ai-r' + ((x.dca && /^DCA \d/.test(x.t)) || (x.tp && /^TP \d/.test(x.t)) ? ' sub' : '')}, h('i', {style:'background:' + x.c}), h('span', {text:x.t}), h('small', {text:x.d})));
+  // details, grouped
+  const GROUPS = [['Buy plan', x => x.dca], ['Targets', x => x.tp], ['Buy zones', x => x.c === AUTO.buy || x.c === AUTO.acc], ['Support and resistance', x => x.lv && !x.deep],
+    ['Long-term levels', x => x.deep], ['Trend and patterns', () => true]];
+  const used = new Set();
+  for (const [g, f] of GROUPS) {
+    const rows = autoInfo.filter(x => !used.has(x) && f(x)); if (!rows.length) continue;
+    rows.forEach(x => used.add(x));
+    list.append(h('div', {class:'ai-s', text:g}));
+    const neat = s => String(s || '').replace(/(\d{1,3}(?:,\d{3})+)\.\d+/g, '$1');   // 59,659.44 -> 59,659
+    for (const x of rows) list.append(h('div', {class:'ai-r' + ((x.dca && /^DCA \d/.test(x.t)) || (x.tp && /^TP \d/.test(x.t)) ? ' sub' : '')}, h('i', {style:'background:' + x.c}),
+      h('div', null, h('span', {text:neat(x.t)}), x.d ? h('small', {text:neat(x.d)}) : null)));
+  }
   list.append(h('div', {class:'ai-f'}, h('p', {text:'Updates live as candles form. Found from past price action, not a prediction.'}),
     autoDefs.length ? h('button', {class:'btn', text:'Keep lines', title:'Copy these lines into your own drawings so you can edit them', onclick:keepAuto}) : null));
   box.append(list); box.hidden = false;
@@ -2066,12 +2124,15 @@ function autoTip0(d){
     return patTip(l) || [l, ''];
   }
   if (n === 'autoZone') {
-    if (/^Buy zone/.test(l)) return [l.split(' · ')[0], 'The last quiet candle before a strong rally. Big buyers were active here and price has not closed under it since, so it often bounces when price comes back.'];
+    if (/^Buy zone/.test(l)) return [l.split(' · ')[0] + (e.s ? ' · strength ' + e.s + '%' : ''), 'The last quiet candle before a strong rally. Big buyers were active here and price has not closed under it since, so it often bounces when price comes back.'];
     if (/^Fib/.test(l)) return ['Fib pullback zone (0.5 to 0.618)', 'After a big move, pullbacks often stop in this zone before the move continues. Traders call it the golden pocket.'];
     if (/^Cycle low/.test(l)) return ['Cycle low', 'The lowest price in the long-term history. The last big support.'];
     if (/^High/.test(l)) return ['Highest price so far', 'The top of this pair\'s history. The first big resistance on the way up.'];
-    if (/^R /.test(l)) return ['Resistance ' + l.slice(2).split(' · ')[0], 'Sellers pushed price down from here before' + (/×$/.test(l) ? ' (' + l.split(' · ').pop().replace('×', ' times') + ')' : '') + '. Price often stalls or turns down here again. A close above it turns it into support.'];
-    if (/^S /.test(l)) return ['Support ' + l.slice(2).split(' · ')[0], 'Buyers held price up here before' + (/×$/.test(l) ? ' (' + l.split(' · ').pop().replace('×', ' times') + ')' : '') + '. Price often bounces here again. A close under it turns it into resistance.'];
+    const sTxt = e.s ? ' Strength ' + e.s + '% (' + strWord(e.s) + '): based on how many times price touched it, how often it held, how much volume traded there and how recent it is.' : '';
+    const fTxt = /flipped/.test(l) ? ' Flipped: price just broke through it, so it switched sides.' : '';
+    if (/^R /.test(l)) return ['Resistance ' + l.slice(2).split(' · ')[0], 'Sellers pushed price down from here before. Price often stalls or turns down here again. A close above it turns it into support.' + fTxt + sTxt];
+    if (/^S /.test(l)) return ['Support ' + l.slice(2).split(' · ')[0], 'Buyers held price up here before. Price often bounces here again. A close under it turns it into resistance.' + fTxt + sTxt];
+    if (/^Stop/.test(l)) return ['Stop-loss ' + l.split(' ')[1], 'If price closes under this, the buy plan is wrong. Sell here to keep the loss small. It sits just under the next support below your last DCA buy.'];
   }
   return l ? [l, ''] : null;
 }
