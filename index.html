@@ -819,6 +819,7 @@ function cleanMeta(m){
   // old default line colours clashed with the blue candles: move them to the new palette
   const OLD = {'#2962ff':'#f0e442', '#ff9800':'#cc79a7', '#e040fb':'#e69f00', '#00bcd4':'#4fd1c5', '#4caf50':'#56b4e9', '#ffeb3b':'#f0e442'};
   if (!m.addLit) { if (!m.watch.some(w => w.s === 'OKX:LITUSDT')) m.watch.push({k:'tv', s:'OKX:LITUSDT', n:'LITUSDT', x:'OKX', g:'My tokens', img:'https://coin-images.coingecko.com/coins/images/71121/large/lighter.png'}); m.addLit = 1; }
+  if (!m.addNear) { if (!m.watch.some(w => w.s === 'BINANCE:NEARUSDT')) m.watch.push(mk('BINANCE', 'NEARUSDT', 'My tokens', 'Binance')); m.addNear = 1; }
   if (!m.pal5) { for (const x of m.ind) x.c = x.c.map(c => OLD[String(c).toLowerCase()] || c); m.pal5 = 1; }
   return m;
 }
