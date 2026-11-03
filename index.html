@@ -1382,15 +1382,24 @@ const AUTO = {sup:'#27ad75', res:'#f0616d', trend:'#5b8cff', fib:'#b39dff', pat:
 const atag = (x, y, text, bg, align, base) => { const t = tag(x, y, text, bg, align, base); t.styles.color = isLight(bg) ? '#08090c' : '#fff'; t.styles.size = 10.5; t.styles.weight = 600; t.styles.paddingTop = t.styles.paddingBottom = 2; t.styles.paddingLeft = t.styles.paddingRight = 5; return t; };
 const paneW = (bounding, c) => bounding && bounding.width ? bounding.width : Math.max(...c.map(p => p.x)) + 300;
 const inPane = (y, bounding) => !bounding || !bounding.height || (y > 8 && y < bounding.height - 8);
+// pixel box of a short zone (shared by drawing and hover)
+const zoneBox = (c, e) => { const x0 = Math.min(c[0].x, c[1].x), tw = e.l ? e.l.length * 6.1 + 12 : 0, x1 = Math.max(Math.max(c[0].x, c[1].x) + 8, x0 + tw);
+  const h = Math.max(16, Math.abs(c[1].y - c[0].y)); return {x0, x1, y0:(c[0].y + c[1].y) / 2 - h / 2, h}; };
 // support / resistance zone: band from the first touch to the right edge, price tag on the right
 K.registerOverlay({
   name:'autoZone', totalStep:3, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
   createPointFigures:({overlay, coordinates:c, bounding}) => {
     if (c.length < 2) return [];
     const col = ovColor(overlay), e = overlay.extendData || {}, W = paneW(bounding, c);
+    if (e.box) {   // short box: from where it formed to a little past the last candle, label inside
+      const b = zoneBox(c, e), out = [{type:'rect', attrs:{x:b.x0, y:b.y0, width:b.x1 - b.x0, height:b.h}, styles:{style:'stroke_fill', color:hexA(col, e.a || 0.14), borderColor:hexA(col, 0.8), borderSize:1, borderRadius:2}}];
+      if (e.l && inPane(b.y0 + b.h / 2, bounding)) out.push({type:'text', ignoreEvent:true, attrs:{x:b.x0 + 5, y:b.y0 + b.h / 2, text:e.l, align:'left', baseline:'middle'},
+        styles:{color:col, backgroundColor:'rgba(0,0,0,0)', borderColor:'rgba(0,0,0,0)', size:10.5, family:CF, weight:600, paddingLeft:0, paddingRight:0, paddingTop:0, paddingBottom:0}});
+      return out;
+    }
     const x0 = Math.min(c[0].x, c[1].x), y0 = Math.min(c[0].y, c[1].y), hh = Math.max(3, Math.abs(c[1].y - c[0].y)), ym = y0 + hh / 2;
-    const out = [{type:'rect', ignoreEvent:true, attrs:{x:x0, y:y0, width:Math.max(0, W - x0), height:hh}, styles:{style:'fill', color:hexA(col, (e.a || 0.13) * 0.65)}},
-      {type:'line', attrs:{coordinates:[{x:x0, y:ym}, {x:W, y:ym}]}, styles:{color:hexA(col, 0.4), size:1, style:'dashed', dashedValue:[5,4]}}];
+    const out = [{type:'rect', ignoreEvent:true, attrs:{x:x0, y:y0, width:Math.max(0, W - x0), height:hh}, styles:{style:'fill', color:hexA(col, e.a || 0.13)}},
+      {type:'line', attrs:{coordinates:[{x:x0, y:ym}, {x:W, y:ym}]}, styles:{color:hexA(col, 0.75), size:1, style:'dashed', dashedValue:[5,4]}}];
     if (e.l && inPane(ym, bounding)) out.push(atag(W - 4 - (e.off || 0), ym, e.l, col, 'right'));
     return out;
   }
@@ -1719,7 +1728,7 @@ function drawBuy(b, last, atr, T, add, tagOff, pctAway, lv, fibZ, note){
     const conf = [lv.some(l => l.kind === 'sup' && l.v >= z.lo - atr * 0.3 && l.v <= z.hi + atr * 0.3) && 'support',
       fibZ && z.lo <= fibZ.hi && z.hi >= fibZ.lo && 'fib zone'].filter(Boolean);
     autoDC = j ? 'deep' : 'buy';
-    add('autoZone', [P(z.i, z.hi), P(n - 1, z.lo)], AUTO.buy, {l:'Buy zone ' + (j + 1) + ' · ' + pctAway(z.hi), a:0.22, off:tagOff((z.hi + z.lo) / 2)});
+    add('autoZone', [P(z.i, z.hi), P(n - 1, z.lo)], AUTO.buy, {l:'Buy zone ' + (j + 1) + ' · ' + pctAway(z.hi), a:0.2, box:1});
     autoInfo.push({c:AUTO.buy, t:'Buy zone ' + (j + 1) + ': ' + fmtNum(z.lo) + ' – ' + fmtNum(z.hi),
       d:'base of a ' + z.push.toFixed(1) + '× ATR rally, ' + (z.tests ? 'tested ' + z.tests + '×' : 'not retested yet') + (conf.length ? ', lines up with ' + conf.join(' + ') : '') + ', ' + pctAway(z.hi) + note});
     cands.push({v:(z.hi + z.lo) / 2, score:3 + conf.length, why:'buy zone'});
@@ -1746,6 +1755,15 @@ function autoUpCands(b, last, lv){
   else for (const x of [0.382, 0.5, 0.618]) c.push({v:lo + r * x, score:1.3, why:'fib ' + x + ' of the drop'});
   return c;
 }
+function autoBoxAt(v, text, color, tEnd, add){
+  for (const d of autoDefs) {
+    if (d.name !== 'autoZone' || !d.extendData || !/^(R|S|Buy zone|Cycle|High)/.test(d.extendData.l || '')) continue;
+    const a = d.points[0].value, b = d.points[1].value, lo = Math.min(a, b) * 0.99, hi = Math.max(a, b) * 1.01;
+    if (v >= lo && v <= hi) { d.extendData = {...d.extendData, l:d.extendData.l + ' · ' + text}; if (d.id) chart.overrideOverlay({id:d.id, extendData:d.extendData}); return; }
+  }
+  const all = chart.getDataList(), t0 = all.length ? all[Math.max(0, all.length - 30)].timestamp : tEnd;
+  add('autoZone', [{timestamp:t0, value:v * 1.0025}, {timestamp:tEnd, value:v * 0.9975}], color, {l:text, box:1, a:0.16});
+}
 function drawTp(last, cands, tEnd, add, pctAway, tagOff, atr){
   const cl = [];
   for (const x of cands.filter(x => x.v > last * 1.02 && x.v < Math.min(last * 5, last + atr * 25)).sort((a, c) => a.v - c.v)) {
@@ -1757,14 +1775,14 @@ function drawTp(last, cands, tEnd, add, pctAway, tagOff, atr){
   for (const c of cl.sort((a, d) => d.score - a.score)) { if (pick.length >= 3) break; if (pick.some(p => Math.abs(p.v - c.v) / p.v < 0.05)) continue; pick.push(c); }
   if (!pick.length) return;
   pick.sort((a, c) => a.v - c.v);
-  pick.forEach((s, j) => (autoDC = j < 2 ? 'tp' : 'deep', add('autoTarget', [{timestamp:tEnd, value:s.v}], AUTO.tp, {l:'TP ' + (j + 1) + ' · ' + pctAway(s.v), r:1, off:tagOff(s.v)})));
+  pick.forEach((s, j) => { autoDC = j < 2 ? 'tp' : 'deep'; if (M().autoCat[autoDC]) autoBoxAt(s.v, 'TP ' + (j + 1) + ' ' + pctAway(s.v), AUTO.tp, tEnd, add); });
   autoInfo.push({c:AUTO.tp, t:'Targets: ' + pick.map((s, j) => 'TP' + (j + 1) + ' ' + pctAway(s.v)).join(', '), d:'take profit in steps', tp:true});
   pick.forEach((s, j) => autoInfo.push({c:AUTO.tp, t:'TP ' + (j + 1) + ' at ' + fmtNum(s.v), d:pctAway(s.v) + ' · ' + s.why.join(' + '), tp:true}));
 }
 function drawDca(last, cands, tEnd, add, pctAway, tagOff){
   const d = autoDca(last, cands); if (!d) return;
   autoDC = 'buy';
-  d.steps.forEach((s, j) => add('autoTarget', [{timestamp:tEnd, value:s.v}], AUTO.dca, {l:'DCA ' + (j + 1) + ' · ' + s.w + '% · ' + pctAway(s.v), r:1, off:tagOff(s.v)}));
+  d.steps.forEach((s, j) => autoBoxAt(s.v, 'DCA ' + (j + 1) + ' ' + s.w + '% ' + pctAway(s.v), AUTO.dca, tEnd, add));
   autoInfo.push({c:AUTO.dca, t:'DCA plan: ' + d.steps.length + ' buy' + (d.steps.length > 1 ? 's' : '') + ', avg ' + fmtNum(d.avg), d:pctAway(d.avg) + ' from now' + (autoBias === 'Downtrend' ? ', trend is down so the lower buys are more likely to fill' : ''), dca:true});
   d.steps.forEach((s, j) => autoInfo.push({c:AUTO.dca, t:'DCA ' + (j + 1) + ' · ' + s.w + '% at ' + fmtNum(s.v), d:pctAway(s.v) + ' · ' + s.why.join(' + '), dca:true}));
 }
@@ -1799,8 +1817,8 @@ function runAuto(){
   const add = (name, points, color, extendData) => {
     if (!M().autoCat[autoDC]) return;
     const styles = {line:{color}};
-    autoDefs.push({name, points, styles, extendData});
-    chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden});
+    const id = chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden});
+    autoDefs.push({name, points, styles, extendData, id});
   };
   const pctAway = v => fmtPct((v - last) / last * 100);
   const few = n < 40;   // too little history for trendlines and patterns (levels and structure still work)
@@ -1826,7 +1844,7 @@ function runAuto(){
   let fibZ = null;
   const closest = {}; for (const l of nearLv) if (!closest[l.kind] || Math.abs(l.v - last) < Math.abs(closest[l.kind].v - last)) closest[l.kind] = l;
   for (const l of nearLv) {
-    const c = l.kind === 'res' ? AUTO.res : AUTO.sup; autoDC = closest[l.kind] === l ? 'lv' : 'deep';
+    const c = l.kind === 'res' ? AUTO.res : AUTO.sup; autoDC = 'lv';
     add('autoZone', [pt(l.first, l.hi), pt(n - 1, l.lo)], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + l.touches + '×', off:tagOff(l.v)});
     autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v), d: l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%, ' + pctAway(l.v)});
   }
@@ -1843,7 +1861,7 @@ function runAuto(){
     const hi = b[hiI].high, lo = b[loI].low, upMove = loI < hiI, rng = hi - lo;
     const at = r => upMove ? hi - rng * r : lo + rng * r, z0 = at(0.5), z1 = at(0.618), from = Math.max(hiI, loI);
     if (from < n - 2) { fibZ = {lo:Math.min(z0, z1), hi:Math.max(z0, z1)};
-      add('autoZone', [pt(from, Math.max(z0, z1)), pt(n - 1, Math.min(z0, z1))], AUTO.fib, {l:'Fib 0.5–0.618', a:0.06, off:tagOff((z0 + z1) / 2)});
+      add('autoZone', [pt(from, Math.max(z0, z1)), pt(n - 1, Math.min(z0, z1))], AUTO.fib, {l:'Fib 0.5–0.618', a:0.08, box:1});
       autoInfo.push({c:AUTO.fib, t:'Fib pullback zone', d:fmtNum(Math.min(z0, z1)) + ' – ' + fmtNum(Math.max(z0, z1)) + ' (' + (upMove ? 'up' : 'down') + ' swing ' + fmtNum(upMove ? lo : hi) + ' → ' + fmtNum(upMove ? hi : lo) + ')'});
     }
   }
@@ -1915,8 +1933,8 @@ async function autoThin(all, it){
   autoPx = last; autoAtrNow = autoAtr(all.length > 2 ? all : b) || atr;
   const tol = atr * 0.6, piv = autoPivots(b, Math.max(3, Math.round(n / 60)));
   const ts = i => Math.min(tN, Math.max(t0, b[Math.min(n - 1, Math.max(0, i))].timestamp));
-  const add = (name, points, color, extendData) => { if (!M().autoCat[autoDC]) return; const styles = {line:{color}}; autoDefs.push({name, points, styles, extendData});
-    chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden}); };
+  const add = (name, points, color, extendData) => { if (!M().autoCat[autoDC]) return; const styles = {line:{color}};
+    const id = chart.createOverlay({name, groupId:'auto', lock:true, points, styles, extendData, visible:!drawHidden}); autoDefs.push({name, points, styles, extendData, id}); };
   const pctAway = v => fmtPct((v - last) / last * 100);
   const vr = chart.getVisibleRange(), vis = all.slice(Math.max(0, vr.from), Math.max(vr.from + 1, vr.to));
   const ppp = 560 / Math.max(1e-18, Math.max(...vis.map(x => x.high)) - Math.min(...vis.map(x => x.low))), tagYs = [];
@@ -1942,21 +1960,21 @@ async function autoThin(all, it){
     // near levels plus deeper ones from the whole life of the pair
     const closest = {}; for (const l of near) if (!closest[l.kind] || Math.abs(l.v - last) < Math.abs(closest[l.kind].v - last)) closest[l.kind] = l;
     for (const l of [...near, ...deep.filter(l => !l.cyc)]) {
-      const c = l.kind === 'res' ? AUTO.res : AUTO.sup, w = l.hi ? null : l.v * 0.006; autoDC = closest[l.kind] === l ? 'lv' : 'deep';
+      const c = l.kind === 'res' ? AUTO.res : AUTO.sup, w = l.hi ? null : l.v * 0.006; autoDC = near.includes(l) ? 'lv' : 'deep';
       const firstTs = typeof l.first === 'number' && l.first < 1e11 ? ts(l.first) : Math.min(tN, Math.max(t0, l.first));
       add('autoZone', [{timestamp:firstTs, value:l.hi || l.v + w}, {timestamp:tN, value:l.lo || l.v - w}], c, {l:(l.kind === 'res' ? 'R ' : 'S ') + fmtNum(l.v) + ' · ' + pctAway(l.v), off:tagOff(l.v)});
       autoInfo.push({c, t:(l.kind === 'res' ? 'Resistance ' : 'Support ') + fmtNum(l.v), d:l.touches + ' touches, held ' + Math.round(l.rate * 100) + '%, ' + pctAway(l.v)});
     }
     let lo = 0, hi = 0; for (let i = 1; i < n; i++) { if (b[i].low < b[lo].low) lo = i; if (b[i].high > b[hi].high) hi = i; }
     autoDC = 'lv';
-    if (hi > lo && b[hi].high > last * 1.05) { add('autoZone', [{timestamp:ts(hi), value:b[hi].high * 1.004}, {timestamp:tN, value:b[hi].high * 0.996}], AUTO.res, {l:'High ' + fmtNum(b[hi].high) + ' · ' + pctAway(b[hi].high), off:tagOff(b[hi].high)});
+    if (hi > lo && b[hi].high > last * 1.05) { add('autoZone', [{timestamp:ts(hi), value:b[hi].high * 1.004}, {timestamp:tN, value:b[hi].high * 0.996}], AUTO.res, {l:'High ' + fmtNum(b[hi].high) + ' · ' + pctAway(b[hi].high), box:1});
       autoInfo.push({c:AUTO.res, t:'Top so far ' + fmtNum(b[hi].high), d:pctAway(b[hi].high)}); }
   }
   autoDC = 'fib';
   if (cat.fib) {
     let hiI = 0, loI = 0; for (let i = 0; i < n; i++) { if (b[i].high > b[hiI].high) hiI = i; if (b[i].low < b[loI].low) loI = i; }
     const hi = b[hiI].high, lo = b[loI].low, up = loI < hiI, r = hi - lo, at = x => up ? hi - r * x : lo + r * x, z0 = at(0.5), z1 = at(0.618);
-    if (Math.max(hiI, loI) < n - 2) { add('autoZone', [{timestamp:ts(Math.max(hiI, loI)), value:Math.max(z0, z1)}, {timestamp:tN, value:Math.min(z0, z1)}], AUTO.fib, {l:'Fib 0.5–0.618', a:0.06, off:tagOff((z0 + z1) / 2)});
+    if (Math.max(hiI, loI) < n - 2) { add('autoZone', [{timestamp:ts(Math.max(hiI, loI)), value:Math.max(z0, z1)}, {timestamp:tN, value:Math.min(z0, z1)}], AUTO.fib, {l:'Fib 0.5–0.618', a:0.08, box:1});
       autoInfo.push({c:AUTO.fib, t:'Fib pullback zone', d:fmtNum(Math.min(z0, z1)) + ' – ' + fmtNum(Math.max(z0, z1))}); }
   }
   autoDC = 'pat';
@@ -2011,7 +2029,16 @@ const PAT_TIP = [
   ['Bear flag', 'A sharp drop (the pole) and then a small bounce. It often continues down by about the size of the pole.'],
 ];
 const patTip = l => { const r = PAT_TIP.find(([k]) => l.startsWith(k)); return r ? [l, r[1]] : null; };
+const DCA_TIP = 'DCA (dollar-cost averaging) step: a planned buy level. Instead of buying all at once, split your money over these steps. The % is the share of your budget for this step; lower steps get more.';
+const TP_TIP = 'Take profit: a level above price where it may stall (resistance, past top or Fib extension). A good place to sell part of your position.';
 function autoTip(d){
+  const r = autoTip0(d); if (!r) return r;
+  const l = (d.extendData && d.extendData.l) || '';
+  if (/^(DCA|TP)/.test(l)) return [l, /^DCA/.test(l) ? DCA_TIP : TP_TIP];
+  const extra = (/· DCA \d/.test(l) ? ' Also a DCA buy step: ' + DCA_TIP.split(': ')[1] : '') + (/· TP \d/.test(l) ? ' Also a take-profit target: sell part here.' : '');
+  return [r[0], r[1] + extra];
+}
+function autoTip0(d){
   const e = d.extendData || {}, l = e.l || '', n = d.name;
   if (n === 'autoMark') {
     if (MS_TIP[l]) return MS_TIP[l];
@@ -2065,6 +2092,7 @@ function autoHit(px, py){
       if (dist < 6 || (e.seg && e.l && Math.abs(px - (a.x + b.x) / 2) < 22 && py > Math.min(a.y, b.y) - 22 && py < Math.min(a.y, b.y))) best.push([1, dist, d]);
     }
     else if (n === 'autoZone' && c.length > 1) {
+      if (e.box) { const bx = zoneBox(c, e); if (px >= bx.x0 && px <= bx.x1 && py >= bx.y0 && py <= bx.y0 + bx.h) best.push([1.5, bx.h, d]); continue; }
       const x0 = Math.min(c[0].x, c[1].x), y0 = Math.min(c[0].y, c[1].y), y1 = Math.max(c[0].y, c[1].y, y0 + 3);
       if (px >= x0 && py >= y0 - 4 && py <= y1 + 4) best.push([2, y1 - y0, d]);
     }
