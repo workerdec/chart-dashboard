@@ -42,6 +42,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
 /* top bar */
 .top{display:flex;align-items:center;gap:2px;padding:0 6px;min-width:0}
 .tb{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border-radius:6px;color:var(--t2);white-space:nowrap;font-weight:500}
+a.tb{text-decoration:none}.radar-link{color:#4C8DFF}
 .tb:hover{background:var(--hover);color:var(--t1)}
 .tb.on{color:var(--accent2);background:var(--active)}
 .sep{width:1px;height:20px;background:var(--line2);margin:0 6px;flex:none}
@@ -409,6 +410,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stro
     <button class="tb hide-m" id="typeBtn" title="Chart type"><svg class="i" viewBox="0 0 24 24"><path d="M7 3v4M7 17v4M17 5v3M17 16v4"/><rect x="5" y="7" width="4" height="10" rx="1"/><rect x="15" y="8" width="4" height="8" rx="1"/></svg></button>
     <button class="tb hide-m" id="viewBtn" title="Switch between your chart (drawings save) and the TradingView chart"></button>
     <div class="grow"></div>
+    <a class="tb radar-link" href="radar.html" title="Market Radar: regime, narratives, money flow, setups"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12l6-6"/></svg><span class="hide-m">Radar</span></a>
     <div class="sync hide-m" id="sync"><i class="dot" id="syncDot"></i><span id="syncTxt"></span></div>
     <button class="tb" id="alertBtn" title="Price alert"><svg class="i" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></button>
     <button class="tb hide-m" id="shotBtn" title="Save chart as image"><svg class="i" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
@@ -2770,6 +2772,17 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => setTab(
 $('#penBtn').onclick = () => { const o = $('#tools').classList.toggle('open'); $('#penBtn').classList.toggle('on', o); $('#app').classList.toggle('tools-open', o); if (!o) setTool('cursor'); };
 $('#editBtn').onclick = () => { const on = $('#wp').classList.toggle('edit'); $('#editBtn').textContent = on ? 'Done' : 'Edit'; };
 
+// Open a coin from a link: watchlist first, then Binance USDT, then OKX USDT, else the search box.
+async function openLinked(q){
+  const base = q.includes(':') ? q.split(':')[1].replace(/USDT$/, '') : q.replace(/USDT$/, '');
+  const hit = M().watch.find(w => w.s === q || w.n === base + 'USDT' || w.n === base);
+  if (hit) return select(hit);
+  if (q.includes(':')) { const [ex, sym] = q.split(':'); return select(mk(ex, sym, '', ex[0] + ex.slice(1).toLowerCase())); }
+  try { const r = await getJSON('https://data-api.binance.vision/api/v3/ticker/price?symbol=' + base + 'USDT', 1); if (r && r.price) return select(mk('BINANCE', base + 'USDT', '', 'Binance')); } catch {}
+  try { const r = await getJSON('https://www.okx.com/api/v5/market/ticker?instId=' + base + '-USDT', 1); if (r && r.data && r.data.length) return select({k:'tv', s:'OKX:' + base + 'USDT', n:base + 'USDT', x:'OKX'}); } catch {}
+  openSearch(base);
+}
+
 // ---------- start ----------
 S = loadState();
 const km = location.hash.match(/[#&]k=([\w-]{20,})/);
@@ -2777,11 +2790,14 @@ if (km) {   // opened from a sync link: adopt that key and take the synced copy
   if (km[1] !== S.key) { S.key = km[1]; S.meta.t = 0; for (const d of Object.values(S.draws)) d.t = 0; }
   history.replaceState(null, '', location.pathname);
 }
+const sm = location.hash.match(/[#&]s=([\w:.-]{1,40})/);
+if (sm) history.replaceState(null, '', location.pathname);
 persist();
 chart.setStyles(chartStyles()); applyScale();
 buildTools(); buildIndicators(); setSync('idle'); renderAlerts();
 tickClock(); setInterval(tickClock, 1000);
 openChart();
+if (sm) openLinked(decodeURIComponent(sm[1]).toUpperCase());
 refreshPrices();
 setInterval(() => { if (!document.hidden) refreshPrices(); }, 30000);
 if (SYNC_URL) { pull(); setInterval(() => { if (!document.hidden) pull(); }, 60000); }

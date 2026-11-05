@@ -15,7 +15,24 @@ export default {
     };
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
 
-    const m = new URL(req.url).pathname.match(/^\/v1\/([A-Za-z0-9_-]{20,64})$/);
+    // Market Radar snapshot: the VPS writes it every 15 min (needs RADAR_SECRET), anyone can read it.
+    if (new URL(req.url).pathname === '/radar') {
+      if (req.method === 'GET') {
+        const v = await env.KV.get('radar');
+        return new Response(v || '{}', { headers: { ...cors, 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json', 'cache-control': 'no-store' } });
+      }
+      if (req.method === 'PUT') {
+        if (!env.RADAR_SECRET || req.headers.get('authorization') !== 'Bearer ' + env.RADAR_SECRET) return new Response('forbidden', { status: 403, headers: cors });
+        const body = await req.text();
+        if (body.length > 5_000_000) return new Response('too large', { status: 413, headers: cors });
+        try { JSON.parse(body); } catch { return new Response('bad json', { status: 400, headers: cors }); }
+        await env.KV.put('radar', body);
+        return new Response('ok', { headers: cors });
+      }
+      return new Response('method not allowed', { status: 405, headers: cors });
+    }
+
+    const m =new URL(req.url).pathname.match(/^\/v1\/([A-Za-z0-9_-]{20,64})$/);
     if (!m) return new Response('not found', { status: 404, headers: cors });
     const key = 'u:' + m[1];
 
