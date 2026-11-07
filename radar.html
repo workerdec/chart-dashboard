@@ -429,8 +429,16 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-v],[data-go]'); if (b) return show(b.dataset.v || b.dataset.go);
   const f = e.target.closest('[data-f]'); if (f) { NF = f.dataset.f; document.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === f)); renderNews(); }
 });
+let CUR = 'overview', DONE = new Set(), D = null, NF = 'all';
+const TAB_R = { narr: d => renderNarr(d), deriv: d => renderDeriv(d), flows: d => renderFlows(d), macro: d => renderMacro(d), discover: d => renderDiscover(d), news: () => renderNews() };
+function ensureTab(v) {
+  if (!D || DONE.has(v) || !TAB_R[v]) return;
+  DONE.add(v);
+  try { TAB_R[v](D); } catch (err) { console.error(v, err); }
+}
 function show(v) {
   if (!$('v-' + v)) return;
+  CUR = v; ensureTab(v);
   document.querySelectorAll('.view').forEach(x => x.classList.toggle('on', x.id === 'v-' + v));
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.v === v));
   try { localStorage.setItem('mr-tab', v); } catch {}
@@ -489,7 +497,6 @@ const setupLi = t => `<li class="setup"><a href="${chartUrl(t.sym)}">${logo(t.sy
 const words = t => new Set(String(t).toLowerCase().replace(/[^a-z0-9$ ]/g, ' ').split(/\s+/).filter(w => w.length > 3));
 const dedupe = list => { const kept = []; for (const n of list) { const w = words(n.title); if (!w.size || !kept.some(k => { let c = 0; for (const x of w) if (k.w.has(x)) c++; return c / Math.min(w.size, k.w.size || 1) >= 0.4; })) kept.push({ n, w }); } return kept.map(k => k.n); };
 const newsLi = n => `<li><span class="tone ${n.tone === 'bull' ? 'up' : n.tone === 'bear' ? 'dn' : ''}"></span><div><a class="t" href="${esc(n.link)}" target="_blank" rel="noopener" style="font-weight:${n.important ? 600 : 450}">${esc(n.title)}</a><div class="meta">${favicon(n.link)}${esc(n.src)} · ${ago(n.ts)}${n.important ? ' · ' + pill('warn', 'Market-moving') : ''}</div></div></li>`;
-let D = null, NF = 'all';
 function renderNews() {
   if (!D) return;
   const q = ($('q').value || '').toLowerCase().trim();
@@ -555,8 +562,8 @@ function render(d) {
   const imp = dedupe(arr(d.news).filter(n => n.important));
   $('heads').innerHTML = (imp.length >= 3 ? imp : dedupe(arr(d.news))).slice(0, 6).map(newsLi).join('') || '<li class="empty" style="display:block">No news yet.</li>';
 
-  for (const [fn, name] of [[renderNarr, 'narr'], [renderDeriv, 'deriv'], [renderFlows, 'flows'], [renderMacro, 'macro'], [renderDiscover, 'discover']]) { try { fn(d); } catch (err) { console.error(name, err); } }
-  renderNews();
+  try { renderRot(d); } catch (err) { console.error('rot', err); }
+  DONE = new Set(); ensureTab(CUR);
   const errs = arr(d.errors);
   $('foot').innerHTML = errs.length ? `${pill('warn', icon('alert') + 'Some sources down')} <span>${esc(errs.map(x => x.split(':')[0]).join(', '))}</span>` : `${pill('up', icon('dot') + 'All sources live')} <span>refreshes every 15 minutes · not financial advice</span>`;
 }
@@ -685,13 +692,22 @@ function rotList(list, mx, out) {
   return list.map(n => `<div class="flowrow" data-n="${esc(n.name)}" style="grid-template-columns:minmax(90px,150px) 1fr auto"><span class="nm">${esc(n.name)}</span><span class="pos"><i style="width:${Math.abs(n.flow7) / mx * 100}%${out ? ';background:linear-gradient(90deg,#F6465D,rgba(246,70,93,.55))' : ''}"></i></span><span class="val"><b class="${out ? 'dn' : 'up'}">${susd(n.flow7)}</b> <span style="font-size:12px">${pc(n.d7)}</span></span></div>`).join('');
 }
 
+function renderRot(d) {
+  const L = NL();
+  if (!L.length) { $('rot').innerHTML = '<div class="empty">Building narrative data… first results appear a few minutes after start.</div>'; return; }
+  const by7 = [...L].sort((a, b) => b.flow7 - a.flow7);
+  const mx = Math.max(...L.map(n => Math.abs(n.flow7)), 1);
+  const ins = by7.filter(n => n.flow7 > 0).slice(0, 4), outs = [...by7].reverse().filter(n => n.flow7 < 0).slice(0, 4);
+  $('rot').innerHTML = `<div><div class="mut" style="font-size:12px;margin-bottom:6px">${icon('aup', 'width:12px;height:12px;color:var(--up);vertical-align:-2px')} Money in</div>${rotList(ins, mx, false) || '<div class="empty">No inflows this week.</div>'}</div>
+    <div><div class="mut" style="font-size:12px;margin-bottom:6px">${icon('adn', 'width:12px;height:12px;color:var(--dn);vertical-align:-2px')} Money out</div>${rotList(outs, mx, true) || '<div class="empty">No outflows this week.</div>'}</div>`;
+
+}
 function renderNarr(d) {
   const L = NL();
   renderAttn(d);
   if (!L.length) {
     ['narrstats', 'tiles', 'nscore'].forEach(id => $(id).innerHTML = '');
     $('ndet').style.display = 'none';
-    $('rot').innerHTML = '<div class="empty">Building narrative data… first results appear a few minutes after start.</div>';
     flowChart(); return;
   }
   $('ndet').style.display = '';
@@ -703,11 +719,6 @@ function renderNarr(d) {
     ['Heating or early', hot.length ? esc(hot.slice(0, 3).map(n => n.name).join(', ')) : '<span class="mut">none right now</span>'],
   ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v}</div></div>`).join('');
   flowChart();
-
-  const mx = Math.max(...L.map(n => Math.abs(n.flow7)), 1);
-  const ins = by7.filter(n => n.flow7 > 0).slice(0, 4), outs = [...by7].reverse().filter(n => n.flow7 < 0).slice(0, 4);
-  $('rot').innerHTML = `<div><div class="mut" style="font-size:12px;margin-bottom:6px">${icon('aup', 'width:12px;height:12px;color:var(--up);vertical-align:-2px')} Money in</div>${rotList(ins, mx, false) || '<div class="empty">No inflows this week.</div>'}</div>
-    <div><div class="mut" style="font-size:12px;margin-bottom:6px">${icon('adn', 'width:12px;height:12px;color:var(--dn);vertical-align:-2px')} Money out</div>${rotList(outs, mx, true) || '<div class="empty">No outflows this week.</div>'}</div>`;
 
   const tiles = [...L].sort((a, b) => (b.d7 ?? -1e9) - (a.d7 ?? -1e9));
   if (!NSEL || !L.some(n => n.name === NSEL)) NSEL = tiles[0].name;
@@ -749,19 +760,37 @@ function renderAttn(d) {
   $('sectors').innerHTML = `<thead><tr><th>Sector</th><th></th><th class="r">24h</th></tr></thead><tbody>` + all.map(s => `<tr><td><b style="font-weight:500">${esc(s.name)}</b><div class="meta">${usd(s.mcap)}</div></td><td style="width:30%"><div class="ibar"><i style="width:${Math.min(Math.abs(s.chg24), 25) / smax * 100}%;background:${s.chg24 >= 0 ? 'var(--up)' : 'var(--dn)'}"></i></div></td><td class="r">${pc(s.chg24)}</td></tr>`).join('') + '</tbody>';
 }
 
+function stamp() {
+  if (!D) return;
+  const stale = Date.now() - D.ts > 40 * 6e4;
+  $('upd').textContent = (stale ? 'Stale · ' : 'Live · ') + 'updated ' + ago(D.ts);
+  $('live').classList.toggle('stale', stale);
+}
+let loading = false;
 async function load() {
+  if (loading || document.hidden) return;
+  loading = true;
   try {
     const r = await fetch(DATA_URL, { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const j = await r.json();
+    const txt = await r.text(), j = JSON.parse(txt);
     if (!j.ts) throw new Error('no data yet');
-    render(j);
+    if (!D || j.ts !== D.ts) {   // new snapshot (every ~15 min): redraw
+      render(j);
+      try { localStorage.setItem('mr-data', txt); } catch {}
+    }
+    stamp();
   } catch (e) {
-    $('foot').innerHTML = pill('dn', icon('x') + 'Could not load data') + ' ' + esc(e.message);
+    if (!D) $('foot').innerHTML = pill('dn', icon('x') + 'Could not load data') + ' ' + esc(e.message);
     $('live').classList.add('stale');
-  }
+  } finally { loading = false; }
 }
-load(); setInterval(load, 60000);
+// Last copy first, so the page shows up instantly; fresh data replaces it a moment later.
+try { const c = JSON.parse(localStorage.getItem('mr-data') || 'null'); if (c && c.ts) { render(c); stamp(); } } catch {}
+load();
+setInterval(load, 60000);
+setInterval(stamp, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 </script>
 </body>
 </html>
