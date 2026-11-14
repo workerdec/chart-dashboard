@@ -87,6 +87,23 @@ main.wrap{padding-top:26px;padding-bottom:64px}
 .rsn a{font-size:12px;color:var(--t4);display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
 .rsn a:hover{color:var(--acc)}
 
+/* usdt dominance */
+.udw{display:grid;grid-template-columns:270px 1fr;gap:26px;align-items:stretch}
+.udv{font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.udv small{font-size:14px;font-weight:600;margin-left:8px}
+.udr{font-size:13px;color:var(--t2);line-height:1.5;margin:8px 0 14px}
+.udg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.udg div{background:var(--s2);border-radius:8px;padding:7px 9px}
+.udg .k{font-size:11px;color:var(--t4)}.udg .v{font-size:14px;font-weight:600;margin-top:2px}
+.udm{font-size:12px;color:var(--t3);display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--line)}
+.udm b{color:var(--t1);font-weight:600}
+.udc{position:relative;height:230px;min-width:0}
+.udc svg{position:absolute;inset:0 64px 18px 0;width:calc(100% - 64px);height:calc(100% - 18px);display:block}
+.udl{position:absolute;right:0;width:60px;transform:translateY(-50%);font-size:11px;padding:1px 0;text-align:center;border-radius:4px;background:var(--s2);color:var(--t3);white-space:nowrap}
+.udl.now{background:var(--warn);color:#111;font-weight:700}
+.udx{position:absolute;bottom:0;font-size:10.5px;color:var(--t4);transform:translateX(-50%);white-space:nowrap}
+@media (max-width:760px){.udw{grid-template-columns:1fr;gap:16px}.udc{height:190px}.udv{font-size:28px}}
+
 /* kpis */
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
 .kpi{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px 12px;min-width:0;display:flex;flex-direction:column;transition:border-color .15s}
@@ -290,6 +307,7 @@ td b{font-weight:600}
   <section class="view on" id="v-overview">
     <div class="panel hero" id="verdict"><div class="sk" style="height:150px"></div><div><div class="sk" style="height:22px;width:70%;margin-bottom:16px"></div><div class="sk" style="height:110px"></div></div></div>
     <div class="kpis" id="kpis"></div>
+    <div class="panel" id="udp" style="margin-bottom:20px;display:none"><div class="ph"><h3><span class="ic warn"><svg class="i"><use href="#i-coins"/></svg></span>USDT dominance</h3><div class="tools" id="udr"><button class="chip" data-ur="7">7D</button><button class="chip on" data-ur="90">3M</button><button class="chip" data-ur="365">1Y</button></div></div><div class="udw"><div id="udstats"></div><div class="udc" id="udchart"></div></div></div>
     <div class="panel" style="margin-bottom:20px"><div class="ph"><h3><span class="ic up"><svg class="i"><use href="#i-flows"/></svg></span>Where money is moving · 7 days</h3><a class="more" data-go="narr">All narratives <svg class="i" style="width:13px;height:13px"><use href="#i-right"/></svg></a></div><div class="grid g2" id="rot" style="gap:28px"></div></div>
     <div class="grid g32">
       <div class="panel"><div class="ph"><h3><span class="ic warn"><svg class="i"><use href="#i-target"/></svg></span>Top setups</h3><span class="sub" id="setupcount"></span></div><ul class="list" id="setups"></ul></div>
@@ -563,6 +581,7 @@ function render(d) {
   $('heads').innerHTML = (imp.length >= 3 ? imp : dedupe(arr(d.news))).slice(0, 6).map(newsLi).join('') || '<li class="empty" style="display:block">No news yet.</li>';
 
   try { renderRot(d); } catch (err) { console.error('rot', err); }
+  try { renderUd(d); } catch (err) { console.error('usdtd', err); }
   DONE = new Set(); ensureTab(CUR);
   const errs = arr(d.errors);
   $('foot').innerHTML = errs.length ? `${pill('warn', icon('alert') + 'Some sources down')} <span>${esc(errs.map(x => x.split(':')[0]).join(', '))}</span>` : `${pill('up', icon('dot') + 'All sources live')} <span>refreshes every 15 minutes · not financial advice</span>`;
@@ -729,6 +748,59 @@ function renderNarr(d) {
     [...L].sort((a, b) => b.mcap - a.mcap).map(n => { const a = n.attn ? att(n.attn) : null; return `<tr data-n="${esc(n.name)}" style="cursor:pointer"><td><b style="font-weight:600">${esc(n.name)}</b></td><td>${stagePill(n.stage)}</td><td class="r">${usd(n.mcap)}</td><td class="r">${pc(n.d1)}</td><td class="r"><b>${pc(n.d7)}</b></td><td class="r">${pc(n.d30)}</td><td class="r ${n.flow7 >= 0 ? 'up' : 'dn'}">${susd(n.flow7)}</td><td class="r hide-m">${(n.volRatio * 100).toFixed(1)}%</td><td class="r hide-m"><span class="${n.breadth >= .6 ? 'up' : n.breadth <= .35 ? 'dn' : 'mut'}">${Math.round(n.breadth * 100)}% up</span></td><td class="r hide-m">${a ? a.hits : '<span class="dim">—</span>'}</td></tr>`; }).join('') + '</tbody>';
   renderNarrDetail();
 }
+
+// USDT.D: up = money hiding in USDT (bad for coins), so rising is drawn red.
+let UR = 90;
+try { UR = +localStorage.getItem('mr-ur') || 90; } catch {}
+function udSeries(u, days) {
+  const from = Date.now() - days * 864e5;
+  let pts = days <= 7 && arr(u.intra).length >= 24 ? arr(u.intra) : arr(u.daily);
+  pts = pts.filter(p => p[0] >= from);
+  if (!pts.length || pts.at(-1)[0] < u.ts) pts = [...pts, [u.ts, u.now]];
+  return pts;
+}
+function udChart(u) {
+  const pts = udSeries(u, UR); if (pts.length < 2) { $('udchart').innerHTML = '<div class="empty">Not enough history yet.</div>'; return; }
+  const v = pts.map(p => p[1]);
+  let lo = Math.min(...v), hi = Math.max(...v);
+  const near = arr(u.levels).filter(l => l > lo - (hi - lo) * .35 && l < hi + (hi - lo) * .35);
+  lo = Math.min(lo, ...near); hi = Math.max(hi, ...near);
+  const pad = (hi - lo) * .08 || .1; lo -= pad; hi += pad;
+  const W = 600, H = 200, t0 = pts[0][0], t1 = pts.at(-1)[0];
+  const X = t => (t - t0) / (t1 - t0 || 1) * W, Y = x => (hi - x) / (hi - lo) * H, P = x => (hi - x) / (hi - lo) * 100;
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('');
+  const col = v.at(-1) >= v[0] ? '#F6465D' : '#0ECB81', id = 'ud' + (++gid);
+  const lv = near.map(l => `<line x1="0" x2="${W}" y1="${Y(l)}" y2="${Y(l)}" stroke="rgba(255,255,255,.22)" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>`).join('');
+  const lab = (pc_) => `top:calc((100% - 18px) * ${pc_ / 100})`;
+  const lbl = near.filter(l => Math.abs(P(l) - P(u.now)) > 6).map(l => `<span class="udl" style="${lab(P(l))}">${l.toFixed(2)}%</span>`).join('');
+  const fmtD = t => new Date(t).toLocaleDateString('en-US', UR <= 7 ? { weekday: 'short', timeZone: 'UTC' } : { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const xt = [0.08, 0.5, 0.92].map(f => `<span class="udx" style="left:calc((100% - 64px) * ${f})">${fmtD(t0 + (t1 - t0) * f)}</span>`).join('');
+  $('udchart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".25"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>${lv}<path d="${line}L${W} ${H}L0 ${H}Z" fill="url(#${id})"/><path d="${line}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke"/><line x1="0" x2="${W}" y1="${Y(u.now)}" y2="${Y(u.now)}" stroke="#F5A524" stroke-opacity=".5" vector-effect="non-scaling-stroke"/></svg>${lbl}<span class="udl now" style="${lab(P(u.now))}">${u.now.toFixed(2)}%</span>${xt}`;
+  for (const b of document.querySelectorAll('#udr .chip')) b.classList.toggle('on', +b.dataset.ur === UR);
+}
+function renderUd(d) {
+  const u = d.usdtd;
+  if (!u || u.now == null) { $('udp').style.display = 'none'; return; }
+  $('udp').style.display = '';
+  const ch = (x, dig = 2) => x == null ? '—' : `<span class="${x > 0.005 ? 'dn' : x < -0.005 ? 'up' : 'mut'}">${x > 0 ? '+' : ''}${x.toFixed(dig)}</span>`;
+  const L = [...arr(u.levels)].sort((a, b) => a - b), above = L.find(l => l > u.now), below = [...L].reverse().find(l => l < u.now);
+  const trend = u.chg7 > 0.2 ? 'Rising: money is hiding in USDT and coins are falling.' : u.chg7 < -0.2 ? 'Falling: money is moving back into coins.' : 'Flat this week.';
+  const sup = u.usdtChg30 != null ? (u.usdtChg30 < -0.5 ? ` USDT supply is shrinking (${u.usdtChg30.toFixed(1)}% in 30d), so the rise comes from coins dropping, not new cash.` : u.usdtChg30 > 0.5 ? ` USDT supply is growing (+${u.usdtChg30.toFixed(1)}% in 30d): fresh cash ready to buy.` : '') : '';
+  const rpos = (u.now - u.lo365) / (u.hi365 - u.lo365 || 1) * 100;
+  $('udstats').innerHTML = `<div class="udv">${u.now.toFixed(2)}%<small>${ch(u.chg24)} 24h</small></div>
+    <div class="udr">${trend}${sup}</div>
+    <div class="udg"><div><div class="k">24h</div><div class="v">${ch(u.chg24)}</div></div><div><div class="k">7 days</div><div class="v">${ch(u.chg7)}</div></div><div><div class="k">30 days</div><div class="v">${ch(u.chg30)}</div></div></div>
+    <div style="margin-bottom:12px"><div class="meter" style="background:linear-gradient(90deg,var(--up),rgba(255,255,255,.2) 50%,var(--dn))"><i style="left:${Math.max(0, Math.min(100, rpos))}%"></i></div><div class="meter-l" style="margin-top:6px"><span>1y low ${u.lo365.toFixed(2)}%</span><span>high ${u.hi365.toFixed(2)}%</span></div></div>
+    <div class="udm"><span>Next level up</span><b>${above ? above.toFixed(2) + '%' : '—'}</b></div>
+    <div class="udm"><span>Next level down</span><b>${below ? below.toFixed(2) + '%' : '—'}</b></div>
+    <div class="udm"><span>USDT market cap</span><b>${usd(u.usdtMcap)} ${u.usdtChg30 != null ? pc(u.usdtChg30) : ''}</b></div>`;
+  udChart(u);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-ur]'); if (!b || !D?.usdtd) return;
+  UR = +b.dataset.ur; try { localStorage.setItem('mr-ur', UR); } catch {}
+  udChart(D.usdtd);
+});
 
 function bigChart(vals, color) {
   vals = arr(vals).filter(ok); if (vals.length < 2) return '';
