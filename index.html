@@ -815,6 +815,7 @@ const DEF_META = () => ({
     mk('CRYPTOCAP','BTC.D','Market','BTC dominance'), mk('CRYPTOCAP','TOTAL3','Market','Crypto cap ex BTC & ETH'),
     mk('CRYPTOCAP','TOTAL','Market','Crypto market cap'), mk('CAPITALCOM','DXY','Market','Dollar index'),
     mk('RUS','BR1!','Market','Brent oil futures'), mk('OANDA','SPX500USD','Market','S&P 500','SP500'),
+    mk('NASDAQ','NDX','Market','Nasdaq 100'),
     ...MINE.map(t => mk('BINANCE', t + 'USDT', 'My tokens', 'Binance')),
   ],
   closed: {},
@@ -855,6 +856,7 @@ function cleanMeta(m){
   // old default line colours clashed with the blue candles: move them to the new palette
   const OLD = {'#2962ff':'#f0e442', '#ff9800':'#cc79a7', '#e040fb':'#e69f00', '#00bcd4':'#4fd1c5', '#4caf50':'#56b4e9', '#ffeb3b':'#f0e442'};
   if (!m.addLit) { if (!m.watch.some(w => w.s === 'OKX:LITUSDT')) m.watch.push({k:'tv', s:'OKX:LITUSDT', n:'LITUSDT', x:'OKX', g:'My tokens', img:'https://coin-images.coingecko.com/coins/images/71121/large/lighter.png'}); m.addLit = 1; }
+  if (!m.addNdx) { if (!m.watch.some(w => w.s === 'NASDAQ:NDX')) { const i = m.watch.findIndex(w => w.s === 'OANDA:SPX500USD'); m.watch.splice(i < 0 ? m.watch.filter(w => w.g === 'Market').length : i + 1, 0, mk('NASDAQ','NDX','Market','Nasdaq 100')); } m.addNdx = 1; }
   if (!m.addNear) { if (!m.watch.some(w => w.s === 'BINANCE:NEARUSDT')) m.watch.push(mk('BINANCE', 'NEARUSDT', 'My tokens', 'Binance')); m.addNear = 1; }
   if (!m.pal5) { for (const x of m.ind) x.c = x.c.map(c => OLD[String(c).toLowerCase()] || c); m.pal5 = 1; }
   return m;
@@ -907,7 +909,7 @@ const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&l
 function toast(msg, ms = 3200){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms); }
 
 // ---------- icons ----------
-const MACRO_IC = {'USDT.D':['#26a17b','₮'], 'BTC.D':['#f7931a','₿'], 'TOTAL':['#2962ff','Σ'], 'TOTAL2':['#2962ff','Σ'], 'TOTAL3':['#2962ff','Σ'], 'DXY':['#2e7d32','$'], 'BR1!':['#455a64','B'], 'SP500':['#c62828','S']};
+const MACRO_IC = {'USDT.D':['#26a17b','₮'], 'BTC.D':['#f7931a','₿'], 'TOTAL':['#2962ff','Σ'], 'TOTAL2':['#2962ff','Σ'], 'TOTAL3':['#2962ff','Σ'], 'DXY':['#2e7d32','$'], 'BR1!':['#455a64','B'], 'SP500':['#c62828','S'], 'NDX':['#0996c7','N'], 'IXIC':['#0996c7','N']};
 function baseOf(it){ if (it.k === 'dex') return it.n.split('/')[0];
   const sym = it.s.split(':')[1] || ''; return sym.replace(/(USDT|USDC|FDUSD|USD|BTC|ETH)$/, '') || sym; }
 const TVLOGO = 'https://s3-symbol-logo.tradingview.com/';
@@ -915,7 +917,7 @@ const LOGO_FIX = {   // symbols whose logo isn't at the usual address
   'USDT.D': TVLOGO + 'crypto/XTVCUSDT--big.svg', 'BTC.D': TVLOGO + 'crypto/XTVCBTC--big.svg',
   'TOTAL': TVLOGO + 'crypto-total-market-cap--big.svg', 'TOTAL3': TVLOGO + 'crypto-total-market-cap--big.svg',
   'BR1!': TVLOGO + 'crude-oil--big.svg',
-  'DXY': TVLOGO + 'indices/u-s-dollar-index--big.svg', 'SP500': TVLOGO + 'indices/s-and-p-500--big.svg',
+  'DXY': TVLOGO + 'indices/u-s-dollar-index--big.svg', 'SP500': TVLOGO + 'indices/s-and-p-500--big.svg', 'NDX': TVLOGO + 'indices/nasdaq-100--big.svg', 'IXIC': TVLOGO + 'indices/nasdaq-composite--big.svg',
   'WAL': 'https://coin-images.coingecko.com/coins/images/54914/large/Walrus_Token_Full_Color_200x200.png',
 };
 function logoUrls(it, b){
@@ -960,8 +962,14 @@ function okxInst(it){
   const [ex, sym] = it.s.split(':'); if (ex !== 'OKX') return null;
   const m = /^([A-Z0-9]{1,15})(USDT|USDC|USD)$/.exec(sym || ''); return m ? m[1] + '-' + (m[2] === 'USD' ? 'USDT' : m[2]) : null;
 }
+// Symbols the browser can't load itself (no CORS); the sync worker builds the candles (/bars)
+const PROXY = {'CRYPTOCAP:USDT.D':'USDT.D', 'NASDAQ:NDX':'NDX', 'NASDAQ:IXIC':'IXIC', 'TVC:NDX':'NDX', 'TVC:IXIC':'IXIC'};
+const proxyOf = it => it && it.k === 'tv' && PROXY[it.s];
+const BARS_URL = (() => { try { return localStorage.getItem('barsUrl') || SYNC_URL; } catch { return SYNC_URL; } })();
+const proxyUrl = (it, tf, x = '') => `${BARS_URL}/bars?s=${encodeURIComponent(proxyOf(it))}&tf=${tf}${x}`;
 function srcOf(it){
   if (it.k === 'dex') return 'gecko';
+  if (proxyOf(it)) return 'proxy';
   if (okxInst(it)) return 'okx';
   return binSym(it) ? 'binance' : 'tv';
 }
@@ -998,6 +1006,11 @@ const gkUrl = (it, f, limit, before) => `https://api.geckoterminal.com/api/v2/ne
 
 // Each source returns {rows (oldest first), more}
 const SRC = {
+  async proxy(it, tf, before){
+    const j = await getJSON(proxyUrl(it, tf, before ? '&before=' + before : ''));
+    if (!j.rows) throw new Error(j.error || 'no data');
+    return {rows: j.rows, more: !!j.more && j.rows.length > 0};
+  },
   async binance(it, tf, before){
     const j = await getJSON(`https://data-api.binance.vision/api/v3/klines?symbol=${binSym(it)}&interval=${TFI[tf].bn}&limit=1000${before ? '&endTime=' + (before - 1) : ''}`);
     return {rows: j.map(r => ({timestamp:r[0], open:+r[1], high:+r[2], low:+r[3], close:+r[4], volume:+r[5]})), more: j.length === 1000};
@@ -1029,6 +1042,14 @@ function startLive(it, tf, cb){
       ws.onclose = () => { if (!L.stop) setTimeout(open, 3000); };
     };
     open();
+    return;
+  }
+  if (src === 'proxy') {
+    const poll = async () => {
+      if (L.stop || document.hidden) return;
+      try { const j = await getJSON(proxyUrl(it, tf, '&n=2')); if (L.stop) return; for (const r of (j.rows || [])) cb(r); refreshProxy([it]); } catch {}
+    };
+    L.timer = setInterval(poll, f.ms < 864e5 ? 30000 : 60000);
     return;
   }
   if (src === 'okx') {
@@ -1138,7 +1159,7 @@ $('#pctBtn').onclick = () => setScale('percentage');
 const SHORT = {STOCHRSI:'Stoch RSI', VOL:'Volume'};
 const lineColor = (x, k) => x.c[k] || PALETTE[k % PALETTE.length];
 let hoverIdx = null, legRaf = 0, LEG = null;
-function srcName(it){ return it.k === 'dex' ? (it.chainName || it.c) + ' · ' + (it.dex || 'DEX') : okxInst(it) ? 'OKX ' + okxInst(it) : exOf(it) === 'BINANCE' ? 'Binance' : 'Binance ' + binSym(it); }
+function srcName(it){ return it.k === 'dex' ? (it.chainName || it.c) + ' · ' + (it.dex || 'DEX') : proxyOf(it) ? (proxyOf(it) === 'USDT.D' ? 'CoinMarketCap' : 'Nasdaq') : okxInst(it) ? 'OKX ' + okxInst(it) : exOf(it) === 'BINANCE' ? 'Binance' : 'Binance ' + binSym(it); }
 function compact(v){ v = Number(v); if (!isFinite(v)) return ''; const a = Math.abs(v); return a >= 1e12 ? (v / 1e12).toFixed(2) + 'T' : a >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (v / 1e3).toFixed(2) + 'K' : v.toFixed(a >= 100 ? 0 : 2); }
 function buildLegend(){
   const box = $('#legend'); box.textContent = ''; LEG = null;
@@ -1672,6 +1693,7 @@ async function majorBars(it, fallback){
     bars = j.map(r => ({timestamp:+r[0], open:+r[1], high:+r[2], low:+r[3], close:+r[4]})); } catch {} }
   else if (okxInst(it)) { try { bars = await okxBars(okxInst(it), '1Dutc', 1000); } catch {} }
   else if (it.k === 'dex') { try { bars = (await SRC.gecko(it, '1D')).rows; } catch {} }
+  else if (proxyOf(it)) { try { bars = (await SRC.proxy(it, '1D')).rows; } catch {} }
   majorCache[key] = bars && bars.length > 60 ? bars : null;
   return majorCache[key] || fallback;
 }
@@ -2329,7 +2351,7 @@ function tickClock(){
 }
 
 // ---------- header ----------
-function exText(it){ return it.k === 'dex' ? (it.chainName || it.c) + ' · ' + (it.dex || 'DEX') : srcOf(it) === 'tv' ? (it.x || exOf(it)) + ' · TradingView' : okxInst(it) ? 'OKX spot' : exOf(it) === 'BINANCE' ? 'Binance spot' : (it.x || exOf(it)) + ' · Binance data'; }
+function exText(it){ return it.k === 'dex' ? (it.chainName || it.c) + ' · ' + (it.dex || 'DEX') : proxyOf(it) ? (proxyOf(it) === 'USDT.D' ? 'USDT mcap ÷ total · CoinMarketCap' : 'Nasdaq index · Yahoo data') : srcOf(it) === 'tv' ? (it.x || exOf(it)) + ' · TradingView' : okxInst(it) ? 'OKX spot' : exOf(it) === 'BINANCE' ? 'Binance spot' : (it.x || exOf(it)) + ' · Binance data'; }
 const fmtPx = q => q.u === 'cap' ? compact(q.p) : q.u === 'pct' ? q.p.toFixed(2) + '%' : fmtNum(q.p);
 function renderHeader(){
   const it = curItem();
@@ -2492,10 +2514,22 @@ function updatePriceCells(id, prev){
 }
 function setPrice(id, p, c, ch, u){ if (!isFinite(+p)) return; const prev = prices[id] && prices[id].p; prices[id] = {p:+p, c:+c, ch:+ch, u}; updatePriceCells(id, prev); checkAlerts(id, +p); }
 
+let proxyT = {};
+function refreshProxy(items){
+  return Promise.all(items.filter(it => proxyOf(it) && Date.now() - (proxyT[idOf(it)] || 0) > 50000).map(it => {
+    proxyT[idOf(it)] = Date.now();
+    return getJSON(proxyUrl(it, '1D', '&n=2')).then(j => {
+      const r = j.rows || [], z = r[r.length - 1], y = r[r.length - 2]; if (!z) return;
+      const prev = y ? y.close : z.open, id = idOf(it);
+      info[id] = {hi: z.high, lo: z.low, vol: z.volume || 0};
+      setPrice(id, z.close, prev ? (z.close - prev) / prev * 100 : 0, z.close - prev, proxyOf(it) === 'USDT.D' ? 'pct' : undefined);
+    }).catch(() => { proxyT[idOf(it)] = 0; });
+  }));
+}
 // Crypto market totals and dominance (TradingView's CRYPTOCAP symbols) from CoinGecko
 let gTime = 0;
 async function refreshGlobal(){
-  const ids = M().watch.concat(curItem(), alertItems()).filter(it => it.k === 'tv' && exOf(it) === 'CRYPTOCAP');
+  const ids = M().watch.concat(curItem(), alertItems()).filter(it => it.k === 'tv' && exOf(it) === 'CRYPTOCAP' && !proxyOf(it));
   if (!ids.length || Date.now() - gTime < 110000) return;
   gTime = Date.now();
   try {
@@ -2553,6 +2587,7 @@ async function refreshPrices(){
     }).catch(() => {}));
   }
   jobs.push(refreshGlobal());
+  jobs.push(refreshProxy([...list, ...alertItems()]));
   await Promise.all(jobs);
   connectTicker();
 }
