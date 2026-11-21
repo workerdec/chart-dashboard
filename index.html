@@ -890,10 +890,13 @@ const M = () => S.meta;
 
 // ---------- formatting ----------
 function decimalsFor(p){ p = Math.abs(Number(p)); if (!isFinite(p) || p === 0) return 2;
+  if (p >= 1e9) return 0;
   if (p >= 10) return 2; if (p >= 1) return 4; return Math.min(12, Math.max(4, Math.ceil(-Math.log10(p)) + 3)); }
 const SUBS = '₀₁₂₃₄₅₆₇₈₉';
+const bigNum = p => { const a = Math.abs(p); return a >= 1e12 ? (p / 1e12).toFixed(3) + 'T' : (p / 1e9).toFixed(a >= 1e11 ? 1 : 2) + 'B'; };
 function fmtNum(p, dec){ p = Number(p); if (!isFinite(p)) return '—';
   const a = Math.abs(p);
+  if (a >= 1e9) return bigNum(p);
   if (a > 0 && a < 1e-4) {   // 0.000005040 -> 0.0₅504, like TradingView
     const zeros = -Math.floor(Math.log10(a)) - 1;
     const sig = String(Math.round(a * 10 ** (zeros + 4))).slice(0, 4).replace(/0+$/, '') || '0';
@@ -967,9 +970,25 @@ function okxInst(it){
 }
 // Symbols the browser can't load itself (no CORS); the sync worker builds the candles (/bars)
 const PROXY = {'CRYPTOCAP:USDT.D':'USDT.D', 'NASDAQ:NDX':'NDX', 'NASDAQ:IXIC':'IXIC', 'TVC:NDX':'NDX', 'TVC:IXIC':'IXIC',
-  'TVC:GOLD':'GOLD', 'OANDA:XAUUSD':'GOLD', 'COMEX:GC1!':'GOLD', 'TVC:SILVER':'SILVER', 'OANDA:XAGUSD':'SILVER', 'COMEX:SI1!':'SILVER'};
-const PROXY_SRC = {'USDT.D':['CoinMarketCap','USDT mcap ÷ total · CoinMarketCap'], NDX:['Nasdaq','Nasdaq index · Yahoo data'], IXIC:['Nasdaq','Nasdaq index · Yahoo data'], GOLD:['COMEX','Gold futures · Yahoo data'], SILVER:['COMEX','Silver futures · Yahoo data']};
+  'TVC:GOLD':'GOLD', 'OANDA:XAUUSD':'GOLD', 'COMEX:GC1!':'GOLD', 'TVC:SILVER':'SILVER', 'OANDA:XAGUSD':'SILVER', 'COMEX:SI1!':'SILVER',
+  'CRYPTOCAP:BTC.D':'BTC.D', 'CRYPTOCAP:ETH.D':'ETH.D', 'CRYPTOCAP:TOTAL':'TOTAL', 'CRYPTOCAP:TOTAL2':'TOTAL2', 'CRYPTOCAP:TOTAL3':'TOTAL3',
+  'CAPITALCOM:DXY':'DXY', 'TVC:DXY':'DXY', 'RUS:BR1!':'BRENT', 'TVC:UKOIL':'BRENT', 'ICEEUR:BRN1!':'BRENT', 'TVC:USOIL':'WTI', 'NYMEX:CL1!':'WTI',
+  'OANDA:SPX500USD':'SPX', 'SP:SPX':'SPX', 'TVC:SPX':'SPX'};
+const CMC_SYMS = new Set(['USDT.D', 'BTC.D', 'ETH.D', 'TOTAL', 'TOTAL2', 'TOTAL3']);   // no volume, value is % or USD cap
+const noVol = it => CMC_SYMS.has(proxyOf(it));
+const PROXY_SRC = {'USDT.D':['CoinMarketCap','USDT mcap ÷ total · CoinMarketCap'], NDX:['Nasdaq','Nasdaq index · Yahoo data'], IXIC:['Nasdaq','Nasdaq index · Yahoo data'], GOLD:['COMEX','Gold futures · Yahoo data'], SILVER:['COMEX','Silver futures · Yahoo data'],
+  'BTC.D':['CoinMarketCap','BTC dominance · CoinMarketCap'], 'ETH.D':['CoinMarketCap','ETH dominance · CoinMarketCap'], TOTAL:['CoinMarketCap','Crypto market cap · CoinMarketCap'],
+  TOTAL2:['CoinMarketCap','Market cap ex BTC · CoinMarketCap'], TOTAL3:['CoinMarketCap','Market cap ex BTC & ETH · CoinMarketCap'],
+  DXY:['ICE','Dollar index · Yahoo data'], BRENT:['ICE','Brent futures · Yahoo data'], WTI:['NYMEX','WTI futures · Yahoo data'], SPX:['S&P','S&P 500 index · Yahoo data']};
 const proxyOf = it => it && it.k === 'tv' && PROXY[it.s];
+// Dominance charts read upside down: USDT.D up = coins down, BTC.D up = alts down.
+// Auto draw finds the same levels; only the words change (drawn labels, panel, tooltips).
+const INV = {'USDT.D':'Coins', 'USDC.D':'Coins', 'BTC.D':'Alts'};
+const invX = () => INV[proxyOf(curItem())] || '';
+const invWhy = () => invX() === 'Alts' ? 'money rotating from alts into BTC' : 'money hiding in stablecoins';
+function invLbl(l){ const X = invX(); if (!X || !l) return l;
+  return String(l).replace(/\bBuy zone (\d+)/g, X + ' top zone $1').replace(/\bDCA (\d+) · \d+% at/g, X + ' rally $1 at').replace(/\bDCA (\d+) \d+%/g, X + ' rally $1').replace(/\bTP (\d+)/g, X + ' dip $1'); }
+const dispE = x => { x = x || {}; return x.l && invX() ? {...x, l: invLbl(x.l)} : x; };
 const BARS_URL = (() => { try { return localStorage.getItem('barsUrl') || SYNC_URL; } catch { return SYNC_URL; } })();
 const proxyUrl = (it, tf, x = '') => `${BARS_URL}/bars?s=${encodeURIComponent(proxyOf(it))}&tf=${tf}${x}`;
 function srcOf(it){
@@ -1149,6 +1168,7 @@ function countdown(ms){
 }
 // price axis: drop ".00" when every label on it ends that way (140,000.00 -> 140,000)
 function yTicks({defaultTicks}){
+  if (defaultTicks.length && defaultTicks.every(t => Math.abs(+t.value) >= 1e9)) return defaultTicks.map(t => ({...t, text:compact(+t.value)}));
   if (defaultTicks.length && defaultTicks.every(t => /^-?[\d,]{4,}\.0+$/.test(t.text))) return defaultTicks.map(t => ({...t, text:t.text.replace(/\.0+$/, '')}));
   return defaultTicks;
 }
@@ -1181,6 +1201,7 @@ function buildLegend(){
   const rows = [];
   for (const x of M().ind) {
     const lib = LIB[x.n]; if (!lib) continue;
+    if (noVol(it) && ['VOL', 'OBV', 'PVT', 'VWAP', 'MFI'].includes(x.n)) continue;
     const vs = h('span', {class:'vs'});
     const row = h('div', {class:'lg-r' + (x.hide ? ' off' : ''), onclick:e => { if (isPhone() && !e.target.closest('button')) row.classList.toggle('open'); }},
       h('span', {class:'n', text:SHORT[x.n] || x.n}), x.p.length ? h('span', {class:'p', text:x.p.join(' ')}) : null, vs,
@@ -1239,6 +1260,7 @@ chart.subscribeAction('onPaneDrag', () => positionLegend());
 chart.setFormatter({formatBigNumber: v => compact(v),
   formatExtendText: ({type, data}) => { if (type !== 'last_price' || mode !== 'kc' || !data) return ''; const list = chart.getDataList(); return list.length && data.timestamp === list[list.length - 1].timestamp ? countdown(barEnd(data.timestamp) - Date.now()) : ''; }});
 chart.setDecimalFold({threshold: 4, format: v => {   // 0.0000049 -> 0.0₅49 on the price axis
+  const nb = +String(v).replace(/,/g, ''); if (Math.abs(nb) >= 1e9) return bigNum(nb);
   const m = String(v).match(/^(-?)0\.(0{4,})(\d+)$/); if (!m) return String(v);
   return m[1] + '0.0' + String(m[2].length).split('').map(d => SUBS[d]).join('') + (m[3].replace(/0+$/, '') || '0'); }});
 chart.subscribeAction('onVisibleRangeChange', () => { scheduleLegend(); updateJump(); });
@@ -1254,6 +1276,7 @@ function openChart(){
   const seq = ++loadSeq;
   stopLive(); hideBanner();
   if (wantsTv(it)) { showAlt(it); return; }
+  if (noVol(it) !== volOff) buildIndicators();
   mode = 'kc'; $('#bot').classList.remove('alt'); $('#alt').hidden = true; $('#alt').textContent = ''; $('#kc').hidden = false; $('#kc').style.visibility = 'hidden'; $('#tools').classList.remove('off');
   $('#wm').hidden = false; $('#wm').textContent = it.n; hoverIdx = null; lastDir = null; buildLegend(); $('#legend').style.visibility = 'hidden';
   $('#loading').hidden = false;
@@ -1345,11 +1368,14 @@ function tvStudies(){
 // ---------- indicators on the chart ----------
 let builtInd = [];
 const lineStyles = colors => ({lines: colors.map(c => ({style:'solid', smooth:false, size:1.6, color:c, dashedValue:[2,2]}))});
+let volOff = false;
 function buildIndicators(){
   for (const id of builtInd) chart.removeIndicator({id});
   builtInd = [];
+  volOff = noVol(curItem());
   for (const x of M().ind) {
     const lib = LIB[x.n]; if (!lib) continue;
+    if (volOff && ['VOL', 'OBV', 'PVT', 'VWAP', 'MFI'].includes(x.n)) continue;
     const opts = {name:x.n, id:'i_' + x.id, visible:!x.hide, calcParams:x.p, styles:lineStyles([0,1,2,3,4,5].map(k => lineColor(x, k)))};
     if (lib.main) { opts.paneId = 'candle_pane'; chart.createIndicator(opts, true); }
     else { opts.paneId = 'p_' + x.id; chart.createIndicator(opts, false); chart.setPaneOptions({id:'p_' + x.id, height: x.n === 'VOL' ? 72 : 110}); }
@@ -1451,7 +1477,7 @@ K.registerOverlay({
   name:'autoZone', totalStep:3, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
   createPointFigures:({overlay, coordinates:c, bounding}) => {
     if (c.length < 2) return [];
-    const col = ovColor(overlay), e = overlay.extendData || {}, W = paneW(bounding, c);
+    const col = ovColor(overlay), e = dispE(overlay.extendData), W = paneW(bounding, c);
     if (e.box) {   // short box: from where it formed to a little past the last candle, label inside
       const b = zoneBox(c, e); if (!inPane(b.y0 + b.h / 2, bounding)) return [];
       const tw = e.l ? e.l.length * 6.5 + 14 : 0; if (b.x1 > W - 2) { b.x1 = W - 2; b.x0 = Math.max(0, Math.min(b.x0, b.x1 - tw)); }   // keep the label inside the chart on narrow screens
@@ -1472,7 +1498,7 @@ K.registerOverlay({
   name:'autoLine', totalStep:3, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
   createPointFigures:({overlay, coordinates:c, bounding}) => {
     if (c.length < 2) return [];
-    const col = ovColor(overlay), e = overlay.extendData || {}, [a, b] = c, dx = b.x - a.x;
+    const col = ovColor(overlay), e = dispE(overlay.extendData), [a, b] = c, dx = b.x - a.x;
     if (Math.abs(dx) < 1e-6) return [];
     const W = e.seg ? b.x : paneW(bounding, c), s = (b.y - a.y) / dx, at = x => a.y + s * (x - a.x);
     const sz = (overlay.styles && overlay.styles.line && overlay.styles.line.size) || e.w || 1.5;
@@ -1489,7 +1515,7 @@ K.registerOverlay({
   name:'autoTarget', totalStep:2, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:true,
   createPointFigures:({overlay, coordinates:c, bounding}) => {
     if (!c.length) return [];
-    const col = ovColor(overlay), e = overlay.extendData || {}, W = paneW(bounding, c), y = c[0].y;
+    const col = ovColor(overlay), e = dispE(overlay.extendData), W = paneW(bounding, c), y = c[0].y;
     if (!inPane(y, bounding)) return [];
     return [{type:'line', attrs:{coordinates:[{x:c[0].x, y}, {x:W, y}]}, styles:{color:hexA(col, 0.6), size:1, style:'dashed', dashedValue:[2,3]}},
       e.r ? atag(W - 4 - (e.off || 0), y, e.l || 'Target', col, 'right') : atag(c[0].x + 6, y - 3, e.l || 'Target', col, 'left', 'bottom')];
@@ -1500,7 +1526,7 @@ K.registerOverlay({
   name:'autoShade', totalStep:5, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
   createPointFigures:({overlay, coordinates:c}) => {
     if (c.length < 4) return [];
-    const col = ovColor(overlay), e = overlay.extendData || {};
+    const col = ovColor(overlay), e = dispE(overlay.extendData);
     const out = [{type:'polygon', ignoreEvent:true, attrs:{coordinates:c.slice(0, 4)}, styles:{style:'fill', color:hexA(col, e.a || 0.09)}}];
     if (e.box) out.push({type:'polygon', ignoreEvent:true, attrs:{coordinates:c.slice(0, 4)}, styles:{style:'stroke', borderColor:hexA(col, 0.6), borderSize:1, borderStyle:'dashed', borderDashedValue:[4,3]}});
     if (e.l) out.push(atag(c[0].x, c[0].y - 5, e.l, col, 'left', 'bottom'));
@@ -1512,7 +1538,7 @@ K.registerOverlay({
   name:'autoMark', totalStep:2, needDefaultPointFigure:true, needDefaultXAxisFigure:false, needDefaultYAxisFigure:false,
   createPointFigures:({overlay, coordinates:c}) => {
     if (!c.length) return [];
-    const col = ovColor(overlay), e = overlay.extendData || {};
+    const col = ovColor(overlay), e = dispE(overlay.extendData);
     return [{type:'text', ignoreEvent:true, attrs:{x:c[0].x, y:c[0].y + (e.up ? -14 : 14), text:e.l || '', align:'center', baseline: e.up ? 'bottom' : 'top'},
       styles:{color:col, backgroundColor:'rgba(0,0,0,0)', borderColor:'rgba(0,0,0,0)', size:10.5, family:CF, weight:600, paddingLeft:0, paddingRight:0, paddingTop:0, paddingBottom:0}}];
   }
@@ -1531,7 +1557,7 @@ function autoPivots(b, k){
 // horizontal levels: cluster pivots by price, then backtest each level bar by bar
 const strWord = s => s >= 70 ? 'strong' : s >= 45 ? 'ok' : 'weak';
 // prices on chart labels: whole numbers from 1,000 up (82,232 instead of 82,232.57)
-const fmtLbl = v => Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : fmtNum(v);
+const fmtLbl = v => Math.abs(v) >= 1e9 ? bigNum(v) : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : fmtNum(v);
 // % away on labels: one decimal, none from 10% up
 const pctShort = x => (x > 0 ? '+' : x < 0 ? MINUS : '') + Math.abs(x).toFixed(Math.abs(x) >= 10 ? 0 : 1) + '%';
 function autoLevels(b, piv, tol, last, atr){
@@ -1859,7 +1885,8 @@ function drawTp(last, cands, tEnd, add, pctAway, tagOff, atr){
   if (autoPlan && autoPlan.avg > autoPlan.stop) { const rr = (pick[0].v - autoPlan.avg) / (autoPlan.avg - autoPlan.stop); autoSum.rr = rr;
     autoInfo.push({c:AUTO.tp, t:'Risk / reward 1 : ' + rr.toFixed(1), d:'avg entry ' + fmtNum(autoPlan.avg) + ' → TP 1 ' + fmtNum(pick[0].v) + ', stop ' + fmtNum(autoPlan.stop) + (rr < 1 ? ' (less reward than risk)' : rr >= 2 ? ' (good)' : ''), tp:true}); }
   pick.forEach((s, j) => { autoDC = j < 2 ? 'tp' : 'deep'; if (M().autoCat[autoDC]) autoBoxAt(s.v, 'TP ' + (j + 1) + ' ' + pctAway(s.v), AUTO.tp, tEnd, add); });
-  autoInfo.push({c:AUTO.tp, t:'Long-term targets: ' + pick.map((s, j) => 'TP' + (j + 1) + ' ' + pctAway(s.v)).join(', '), d:'from the daily chart, the same on every timeframe. Sell part at each one.', tp:true});
+  if (invX()) autoInfo.push({c:AUTO.tp, t:invX() + ' dip levels: where ' + curItem().n + ' may rise to', d:'resistances on the dominance chart, from daily history. Dominance rising there means ' + invWhy() + ', so ' + invX().toLowerCase() + ' usually drop until it gets there: places to look for buys.', tp:true});
+  else autoInfo.push({c:AUTO.tp, t:'Long-term targets: ' + pick.map((s, j) => 'TP' + (j + 1) + ' ' + pctAway(s.v)).join(', '), d:'from the daily chart, the same on every timeframe. Sell part at each one.', tp:true});
   pick.forEach((s, j) => autoInfo.push({c:AUTO.tp, t:'TP ' + (j + 1) + ' at ' + fmtNum(s.v), d:pctAway(s.v) + ' · ' + s.why.join(' + '), tp:true}));
 }
 // long-term (investing) levels from daily history: major levels, cycle low, 200-day / 50-week averages,
@@ -1894,6 +1921,13 @@ function drawDca(last, cands, tEnd, add, pctAway, tagOff, atr){
   const low = d.steps[d.steps.length - 1].v, gap = 0.08;
   const under = cands.map(c => c.v).filter(v => v < low * 0.985 && v > low * 0.85).sort((a, c) => c - a)[0];
   const stop = under ? under * 0.985 : low * (1 - gap);
+  const X = invX();
+  if (X) {
+    autoSum.buy = d;
+    autoInfo.push({c:AUTO.dca, t:X + ' rally levels: where ' + curItem().n + ' may fall to', d:'supports on the dominance chart, from daily history. Dominance falling there means ' + invWhy().replace('hiding in', 'leaving').replace('rotating from alts into BTC', 'rotating back into alts') + ', so ' + X.toLowerCase() + ' usually rise', dca:true});
+    d.steps.forEach((s, j) => autoInfo.push({c:AUTO.dca, t:X + ' rally ' + (j + 1) + ' at ' + fmtNum(s.v), d:pctAway(s.v) + ' · ' + s.why.join(' + '), dca:true}));
+    return;
+  }
   autoPlan = {avg:d.avg, stop}; autoSum.buy = d; autoSum.stop = stop;
   if (M().autoCat.buy) { const all = chart.getDataList(), t0 = all.length ? all[Math.max(0, all.length - 30)].timestamp : tEnd;
     add('autoZone', [{timestamp:t0, value:stop * 1.002}, {timestamp:tEnd, value:stop * 0.998}], AUTO.res, {l:'Stop ' + fmtLbl(stop) + ' ' + pctAway(stop), box:1, a:0.1, stop:1}); }
@@ -2107,21 +2141,27 @@ function renderAutoInfo(){
   const box = $('#autoInfo'); box.textContent = '';
   if (!M().auto || mode !== 'kc') { box.hidden = true; return; }
   const pats = autoInfo.filter(x => x.pat || x.alert);
-  const bias = autoBias ? h('em', {class:'ai-b ' + (autoBias === 'Uptrend' ? 'up' : 'down'), text:(autoBias === 'Uptrend' ? '▲ ' : '▼ ') + autoBias}) : null;
+  const X = invX();
+  const bias = autoBias ? h('em', {class:'ai-b ' + ((autoBias === 'Uptrend') !== !!X ? 'up' : 'down'), text:(autoBias === 'Uptrend' ? '▲ ' : '▼ ') + autoBias + (X ? ' · ' + X.toLowerCase() + (autoBias === 'Uptrend' ? ' weak' : ' strong') : '')}) : null;
   box.append(h('div', {class:'ai-h'}, h('b', {text:'Auto'}), bias, h('span', {text: pats.map(p => p.t).join(' · ') || (autoBias ? '' : 'No clear trend')}),
     h('button', {class:'ai-g', title:'Choose what to show', svg:svg(ICON.gear), onclick:e => autoMenu(e.currentTarget)}),
     h('button', {title:'Details', svg:svg(ICON.chev), onclick:() => box.classList.toggle('open')})));
   const list = h('div', {class:'ai-l'});
   // the plan in plain words
   const S = autoSum, pl = h('div', {class:'ai-p'}), row = (k, v, cls) => pl.append(h('span', {text:k}), h('b', {class:cls || '', text:v}));
+  if (X) {
+    if (S.buy) row(X + ' rally if it falls to', S.buy.steps.map(s => fmtLbl(s.v)).join(' → '), 'up');
+    if (S.tp && S.tp.length) row(X + ' dip if it rises to', S.tp.map(s => fmtLbl(s.v)).join(' · '), 'down');
+  } else {
   if (S.buy) row('Long-term buy', S.buy.steps.map(s => fmtLbl(s.v)).join(' → ') + '  (avg ' + fmtLbl(S.buy.avg) + ')', 'up');
   if (S.tp && S.tp.length) row('Long-term sell', S.tp.map(s => fmtLbl(s.v)).join(' · '), 'tp');
+  }
   if (S.stop) row('Stop', fmtLbl(S.stop) + '  (' + pctShort((S.stop - S.buy.avg) / S.buy.avg * 100) + ' from avg)', 'down');
   if (isFinite(S.rr)) row('Reward', '1 : ' + S.rr.toFixed(1) + (S.rr >= 2 ? '  good' : S.rr < 1 ? '  poor' : ''), S.rr >= 2 ? 'up' : S.rr < 1 ? 'down' : '');
   if (pl.childNodes.length) list.append(pl);
 
   // details, grouped
-  const GROUPS = [['Long-term DCA', x => x.dca], ['Long-term targets', x => x.tp], ['Buy zones', x => x.c === AUTO.buy || x.c === AUTO.acc], ['Support and resistance', x => x.lv && !x.deep],
+  const GROUPS = [[X ? X + ' rally levels (dominance supports)' : 'Long-term DCA', x => x.dca], [X ? X + ' dip levels (dominance resistances)' : 'Long-term targets', x => x.tp], [X ? X + ' top zones' : 'Buy zones', x => x.c === AUTO.buy || x.c === AUTO.acc], ['Support and resistance', x => x.lv && !x.deep],
     ['Long-term levels', x => x.deep], ['Trend and patterns', () => true]];
   const used = new Set();
   for (const [g, f] of GROUPS) {
@@ -2129,8 +2169,8 @@ function renderAutoInfo(){
     rows.forEach(x => used.add(x));
     list.append(h('div', {class:'ai-s', text:g}));
     const neat = s => String(s || '').replace(/(\d{1,3}(?:,\d{3})+)\.\d+/g, '$1');   // 59,659.44 -> 59,659
-    for (const x of rows) list.append(h('div', {class:'ai-r' + ((x.dca && /^DCA \d/.test(x.t)) || (x.tp && /^TP \d/.test(x.t)) ? ' sub' : '')}, h('i', {style:'background:' + x.c}),
-      h('div', null, h('span', {text:neat(x.t)}), x.d ? h('small', {text:neat(x.d)}) : null)));
+    for (const x of rows) list.append(h('div', {class:'ai-r' + ((x.dca && /^(DCA|Coins rally|Alts rally) \d/.test(x.t)) || (x.tp && /^TP \d/.test(x.t)) ? ' sub' : '')}, h('i', {style:'background:' + x.c}),
+      h('div', null, h('span', {text:neat(invLbl(x.t))}), x.d ? h('small', {text:neat(invLbl(x.d))}) : null)));
   }
   list.append(h('div', {class:'ai-f'}, h('p', {text:'Updates live as candles form. Found from past price action, not a prediction.'}),
     autoDefs.length ? h('button', {class:'btn', text:'Keep lines', title:'Copy these lines into your own drawings so you can edit them', onclick:keepAuto}) : null));
@@ -2167,6 +2207,15 @@ const DCA_TIP = 'Long-term DCA step (from the daily chart, the same on every tim
 const TP_TIP = 'Long-term take profit (from the daily chart): a big level above price where it may stall, like a major resistance, the all-time high or a Fib extension of the cycle. A good place to sell part of your position.';
 function autoTip(d){
   const r = autoTip0(d); if (!r) return r;
+  const X = invX();
+  if (X) {
+    const l = (d.extendData && d.extendData.l) || '', x = X.toLowerCase(), sym = curItem().n;
+    if (/^DCA/.test(l)) return [invLbl(l), sym + ' may fall to this support. Dominance dropping means ' + invWhy().replace('hiding in', 'leaving').replace('rotating from alts into BTC', 'rotating back into alts') + ', so ' + x + ' usually rally while it falls toward here.'];
+    if (/^TP/.test(l)) return [invLbl(l), sym + ' may rise to this resistance. Dominance rising means ' + invWhy() + ', so ' + x + ' usually drop until it gets here. A place to look for ' + x + ' to buy.'];
+    if (/^Buy zone/.test(l)) return [invLbl(l).split(' · ')[0], 'A base on the dominance chart before a strong rise. ' + sym + ' tends to bounce up from it, which means ' + x + ' tend to top out or drop when it is reached.'];
+    const extra = (/· DCA \d/.test(l) ? ' Also a ' + x + ' rally level.' : '') + (/· TP \d/.test(l) ? ' Also a ' + x + ' dip level.' : '');
+    return [invLbl(r[0]), r[1] + extra + ' (On ' + sym + ', up is bad for ' + x + '.)'];
+  }
   const l = (d.extendData && d.extendData.l) || '';
   if (/^(DCA|TP)/.test(l)) return [l, /^DCA/.test(l) ? DCA_TIP : TP_TIP];
   const extra = (/· DCA \d/.test(l) ? ' Also a DCA buy step: ' + DCA_TIP.split(': ')[1] : '') + (/· TP \d/.test(l) ? ' Also a take-profit target: sell part here.' : '');
@@ -2526,8 +2575,9 @@ function refreshProxy(items){
     return getJSON(proxyUrl(it, '1D', '&n=2')).then(j => {
       const r = j.rows || [], z = r[r.length - 1], y = r[r.length - 2]; if (!z) return;
       const prev = y ? y.close : z.open, id = idOf(it);
-      info[id] = {hi: z.high, lo: z.low, vol: 0};   // yahoo volume is contracts/shares, not USD: don't show it as $
-      setPrice(id, z.close, prev ? (z.close - prev) / prev * 100 : 0, z.close - prev, proxyOf(it) === 'USDT.D' ? 'pct' : undefined);
+      const sym = proxyOf(it), cap = /^TOTAL/.test(sym), pct = /\.D$/.test(sym);
+      info[id] = cap ? {mc: z.close, hi: z.high, lo: z.low, vol: 0} : {hi: z.high, lo: z.low, vol: 0};   // yahoo volume is contracts/shares, not USD: don't show it as $
+      setPrice(id, z.close, prev ? (z.close - prev) / prev * 100 : 0, z.close - prev, pct ? 'pct' : cap ? 'cap' : undefined);
     }).catch(() => { proxyT[idOf(it)] = 0; });
   }));
 }
@@ -2840,7 +2890,7 @@ if (km) {   // opened from a sync link: adopt that key and take the synced copy
   if (km[1] !== S.key) { S.key = km[1]; S.meta.t = 0; for (const d of Object.values(S.draws)) d.t = 0; }
   history.replaceState(null, '', location.pathname);
 }
-const sm = location.hash.match(/[#&]s=([\w:.-]{1,40})/);
+const sm = location.hash.match(/[#&]s=([\w:.!-]{1,40})/);
 if (sm) history.replaceState(null, '', location.pathname);
 persist();
 chart.setStyles(chartStyles()); applyScale();

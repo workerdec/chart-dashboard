@@ -3,11 +3,17 @@
 const ALLOWED = ['https://workerdec.github.io', 'http://127.0.0.1:8799'];
 const MAX_BYTES = 2_000_000;
 
-// ---------- /bars?s=USDT.D|NDX|IXIC|GOLD|SILVER&tf=5m..1M&before=ms ----------
+// ---------- /bars?s=USDT.D|BTC.D|TOTAL|TOTAL3|NDX|SPX|DXY|BRENT|GOLD|SILVER...&tf=5m..1M&before=ms ----------
 // Returns {rows:[{timestamp,open,high,low,close,volume}] oldest first, more}. One page per call.
 const UA = { 'user-agent': 'Mozilla/5.0 chart-dashboard', accept: 'application/json' };
 const TFMS = { '1m': 6e4, '5m': 3e5, '15m': 9e5, '1h': 36e5, '4h': 144e5, '1D': 864e5, '1W': 6048e5, '1M': 0 };
-const YAHOO = { NDX: '^NDX', IXIC: '^IXIC', SPX: '^GSPC', GOLD: 'GC=F', SILVER: 'SI=F' };
+const YAHOO = { NDX: '^NDX', IXIC: '^IXIC', SPX: '^GSPC', GOLD: 'GC=F', SILVER: 'SI=F', DXY: 'DX-Y.NYB', BRENT: 'BZ=F', WTI: 'CL=F' };
+// crypto totals/dominance, all from one CMC feed so they agree with each other: [total, btc dominance %, eth dominance %, usdt supply]
+const CMC = {
+  'USDT.D': (t, b, e, u) => u ? u / t * 100 : null,
+  'BTC.D': (t, b) => b, 'ETH.D': (t, b, e) => e,
+  TOTAL: (t) => t, TOTAL2: (t, b) => t * (1 - b / 100), TOTAL3: (t, b, e) => t * (1 - (b + e) / 100),
+};
 const getj = async (url) => { const r = await fetch(url, { headers: UA }); if (!r.ok) throw new Error(r.status + ' ' + url.split('?')[0]); return r.json(); };
 
 function bucketOf(ts, tf) {
@@ -57,9 +63,9 @@ function supplyAt(S, t) {   // linear between the daily points, flat after the l
 }
 async function cmc(interval, startMs, endMs) {
   const j = await getj(`https://api.coinmarketcap.com/data-api/v3/global-metrics/quotes/historical?format=chart&interval=${interval}&timeStart=${Math.floor(startMs / 1000)}&timeEnd=${Math.floor(endMs / 1000)}`);
-  return (j.data?.quotes || []).map((q) => [Date.parse(q.timestamp), q.quote[0].totalMarketCap]);
+  return (j.data?.quotes || []).map((q) => [Date.parse(q.timestamp), q.quote[0].totalMarketCap, q.btcDominance, q.ethDominance]);
 }
-async function usdtd(tf, before) {
+async function cmcSeries(sym, tf, before) {
   // [cmc interval, ms per point, pages of 2000 points]
   const plan = { '1m': ['5m', 3e5, 1], '5m': ['5m', 3e5, 1], '15m': ['5m', 3e5, 2], '1h': ['5m', 3e5, 2], '4h': ['1h', 36e5, 1], '1D': ['1d', 864e5, 1], '1W': ['1d', 864e5, 2], '1M': ['1d', 864e5, 2] }[tf];
   const [iv, step, pages] = plan, span = 2000 * step;
@@ -67,13 +73,19 @@ async function usdtd(tf, before) {
   for (let p = 0; p < pages; p++) reqs.push(cmc(iv, before - (p + 1) * span, before - p * span - 1));
   // live page of a coarse chart: add the last 2 days of 5m points so today's candle exists and has a real high/low
   if (iv !== '5m' && before >= Date.now() - 6e4) reqs.push(cmc('5m', before - 2 * 864e5, before).catch(() => []));
-  const [S, ...parts] = await Promise.all([usdtSupply(), ...reqs]);
+  const needU = sym === 'USDT.D';
+  const [S, ...parts] = await Promise.all([needU ? usdtSupply() : null, ...reqs]);
   const tot = parts.flat().sort((a, b) => a[0] - b[0]);
   const pts = [];
-  for (const [t, total] of tot) { const u = supplyAt(S, t); if (u && total) pts.push([t, +(u / total * 100).toFixed(4)]); }
+  const f = CMC[sym];
+  for (const [t, total, btc, eth] of tot) {
+    if (!total || btc == null) continue;
+    const v = f(total, btc, eth, needU ? supplyAt(S, t) : 0);
+    if (v != null && isFinite(v)) pts.push([t, v > 1e6 ? Math.round(v) : +v.toFixed(4)]);
+  }
   const rows = candles(pts, tf === '1m' ? '5m' : tf);
   if (rows.length && before < Date.now() - 6e4) rows.pop();   // older page: drop a possibly partial last candle
-  return { rows, more: pts.length > 0 && tot[0] && tot[0][0] > S[0][0] };
+  return { rows, more: pts.length > 0 && (!needU || tot[0][0] > S[0][0]) };
 }
 
 async function yahoo(sym, tf, before) {
@@ -94,7 +106,7 @@ async function yahoo(sym, tf, before) {
 async function bars(req, cors, ctx) {
   const u = new URL(req.url), s = u.searchParams.get('s') || '', tf = u.searchParams.get('tf') || '1D';
   const head = { ...cors, 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json' };
-  if (!(tf in TFMS) || !(s === 'USDT.D' || YAHOO[s])) return new Response('{"error":"bad symbol or tf"}', { status: 400, headers: head });
+  if (!(tf in TFMS) || !(CMC[s] || YAHOO[s])) return new Response('{"error":"bad symbol or tf"}', { status: 400, headers: head });
   const now = Date.now(), b = +u.searchParams.get('before') || 0, before = b && b < now ? b : now;
   const intraday = TFMS[tf] && TFMS[tf] < 864e5, ttl = b ? 3600 : intraday ? 45 : 300;
   // cache key: live calls rounded to the ttl so everyone shares one upstream fetch
@@ -104,7 +116,7 @@ async function bars(req, cors, ctx) {
   const send = (body) => { if (n) { const j = JSON.parse(body); j.rows = j.rows.slice(-n); body = JSON.stringify(j); } return new Response(body, { headers: { ...head, 'cache-control': `public, max-age=${Math.min(ttl, 60)}` } }); };
   if (hit) return send(await hit.text());
   try {
-    const out = s === 'USDT.D' ? await usdtd(tf, before) : await yahoo(YAHOO[s], tf, before);
+    const out = CMC[s] ? await cmcSeries(s, tf, before) : await yahoo(YAHOO[s], tf, before);
     const body = JSON.stringify(out);
     ctx.waitUntil(cache.put(keyUrl, new Response(body, { headers: { 'cache-control': `public, max-age=${ttl}` } })));
     return send(body);
