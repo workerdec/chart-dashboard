@@ -3,11 +3,11 @@
 const ALLOWED = ['https://workerdec.github.io', 'http://127.0.0.1:8799'];
 const MAX_BYTES = 2_000_000;
 
-// ---------- /bars?s=USDT.D|NDX|IXIC&tf=5m..1M&before=ms ----------
+// ---------- /bars?s=USDT.D|NDX|IXIC|GOLD|SILVER&tf=5m..1M&before=ms ----------
 // Returns {rows:[{timestamp,open,high,low,close,volume}] oldest first, more}. One page per call.
 const UA = { 'user-agent': 'Mozilla/5.0 chart-dashboard', accept: 'application/json' };
 const TFMS = { '1m': 6e4, '5m': 3e5, '15m': 9e5, '1h': 36e5, '4h': 144e5, '1D': 864e5, '1W': 6048e5, '1M': 0 };
-const YAHOO = { NDX: '^NDX', IXIC: '^IXIC', SPX: '^GSPC' };
+const YAHOO = { NDX: '^NDX', IXIC: '^IXIC', SPX: '^GSPC', GOLD: 'GC=F', SILVER: 'SI=F' };
 const getj = async (url) => { const r = await fetch(url, { headers: UA }); if (!r.ok) throw new Error(r.status + ' ' + url.split('?')[0]); return r.json(); };
 
 function bucketOf(ts, tf) {
@@ -142,7 +142,7 @@ export default {
       return new Response('method not allowed', { status: 405, headers: cors });
     }
 
-    // Candles for symbols the browser can't fetch itself (no CORS): USDT dominance, Nasdaq.
+    // Candles for symbols the browser can't fetch itself (no CORS): USDT dominance, Nasdaq, gold, silver.
     if (new URL(req.url).pathname === '/bars' && req.method === 'GET') return bars(req, cors, ctx);
 
     const m =new URL(req.url).pathname.match(/^\/v1\/([A-Za-z0-9_-]{20,64})$/);
