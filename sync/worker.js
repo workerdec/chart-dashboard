@@ -3,11 +3,11 @@
 const ALLOWED = ['https://workerdec.github.io', 'http://127.0.0.1:8799'];
 const MAX_BYTES = 2_000_000;
 
-// ---------- /bars?s=USDT.D|BTC.D|TOTAL|TOTAL3|NDX|SPX|DXY|BRENT|GOLD|SILVER...&tf=5m..1M&before=ms ----------
+// ---------- /bars?s=USDT.D|BTC.D|TOTAL|TOTAL3|NDX|SPX|DXY|BRENT|GOLD|SILVER|NVDA...&tf=5m..1M&before=ms ----------
 // Returns {rows:[{timestamp,open,high,low,close,volume}] oldest first, more}. One page per call.
 const UA = { 'user-agent': 'Mozilla/5.0 chart-dashboard', accept: 'application/json' };
 const TFMS = { '1m': 6e4, '5m': 3e5, '15m': 9e5, '1h': 36e5, '4h': 144e5, '1D': 864e5, '1W': 6048e5, '1M': 0 };
-const YAHOO = { NDX: '^NDX', IXIC: '^IXIC', SPX: '^GSPC', GOLD: 'GC=F', SILVER: 'SI=F', DXY: 'DX-Y.NYB', BRENT: 'BZ=F', WTI: 'CL=F' };
+const YAHOO = { NDX: '^NDX', IXIC: '^IXIC', SPX: '^GSPC', GOLD: 'GC=F', SILVER: 'SI=F', DXY: 'DX-Y.NYB', BRENT: 'BZ=F', WTI: 'CL=F', NVDA: 'NVDA' };
 // crypto totals/dominance, all from one CMC feed so they agree with each other: [total, btc dominance %, eth dominance %, usdt supply]
 const CMC = {
   'USDT.D': (t, b, e, u) => u ? u / t * 100 : null,

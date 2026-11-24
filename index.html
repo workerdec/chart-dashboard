@@ -121,7 +121,7 @@ a.tb{text-decoration:none}.radar-link{color:#4C8DFF}
 .ai-p b{font-weight:600;color:var(--t1)}
 .ai-p b.up{color:#3fcf8e}.ai-p b.down{color:#f0616d}.ai-p b.tp{color:#ff9f43}
 .ai-b{font-style:normal;font-size:11.5px;font-weight:600;padding:2px 7px;border-radius:10px}
-.ai-b.up{color:#3fcf8e;background:rgba(63,207,142,.12)}.ai-b.down{color:#f0616d;background:rgba(240,97,109,.12)}
+.ai-b.up{color:#3fcf8e;background:rgba(63,207,142,.12)}.ai-b.warn{color:#e6b259;background:rgba(230,178,89,.13)}.ai-b.down{color:#f0616d;background:rgba(240,97,109,.12)}
 .ai-l p{margin:6px 0 0;color:var(--t3);font-size:11px}
 .autoinfo.open .ai-l{max-height:min(62vh,560px);overflow-y:auto}
 .ai-c{display:flex;gap:4px;padding:8px 0 6px;flex-wrap:wrap}
@@ -816,6 +816,7 @@ const DEF_META = () => ({
     mk('CRYPTOCAP','TOTAL','Market','Crypto market cap'), mk('CAPITALCOM','DXY','Market','Dollar index'),
     mk('RUS','BR1!','Market','Brent oil futures'), mk('OANDA','SPX500USD','Market','S&P 500','SP500'),
     mk('NASDAQ','NDX','Market','Nasdaq 100'), mk('TVC','GOLD','Market','Gold'), mk('TVC','SILVER','Market','Silver'),
+    mk('NASDAQ','NVDA','Market','Nvidia'),
     ...MINE.map(t => mk('BINANCE', t + 'USDT', 'My tokens', 'Binance')),
   ],
   closed: {},
@@ -860,6 +861,7 @@ function cleanMeta(m){
   if (!m.addMetals) { let i = m.watch.findIndex(w => w.s === 'NASDAQ:NDX'); if (i < 0) i = m.watch.filter(w => w.g === 'Market').length - 1;
     for (const [sym, n] of [['SILVER','Silver'], ['GOLD','Gold']]) if (!m.watch.some(w => PROXY[w.s] === sym)) m.watch.splice(i + 1, 0, mk('TVC', sym, 'Market', n));
     m.addMetals = 1; }
+  if (!m.addNvda) { if (!m.watch.some(w => PROXY[w.s] === 'NVDA')) { let i = -1; m.watch.forEach((w, j) => { if (w.g === 'Market') i = j; }); m.watch.splice(i + 1, 0, mk('NASDAQ', 'NVDA', 'Market', 'Nvidia')); } m.addNvda = 1; }
   if (!m.addNear) { if (!m.watch.some(w => w.s === 'BINANCE:NEARUSDT')) m.watch.push(mk('BINANCE', 'NEARUSDT', 'My tokens', 'Binance')); m.addNear = 1; }
   if (!m.pal5) { for (const x of m.ind) x.c = x.c.map(c => OLD[String(c).toLowerCase()] || c); m.pal5 = 1; }
   return m;
@@ -915,7 +917,7 @@ const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&l
 function toast(msg, ms = 3200){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms); }
 
 // ---------- icons ----------
-const MACRO_IC = {'USDT.D':['#26a17b','₮'], 'BTC.D':['#f7931a','₿'], 'TOTAL':['#2962ff','Σ'], 'TOTAL2':['#2962ff','Σ'], 'TOTAL3':['#2962ff','Σ'], 'DXY':['#2e7d32','$'], 'BR1!':['#455a64','B'], 'SP500':['#c62828','S'], 'NDX':['#0996c7','N'], 'IXIC':['#0996c7','N'], 'GOLD':['#c9a227','Au'], 'SILVER':['#8e9aa6','Ag']};
+const MACRO_IC = {'USDT.D':['#26a17b','₮'], 'BTC.D':['#f7931a','₿'], 'TOTAL':['#2962ff','Σ'], 'TOTAL2':['#2962ff','Σ'], 'TOTAL3':['#2962ff','Σ'], 'DXY':['#2e7d32','$'], 'BR1!':['#455a64','B'], 'SP500':['#c62828','S'], 'NDX':['#0996c7','N'], 'NVDA':['#76b900','N'], 'IXIC':['#0996c7','N'], 'GOLD':['#c9a227','Au'], 'SILVER':['#8e9aa6','Ag']};
 function baseOf(it){ if (it.k === 'dex') return it.n.split('/')[0];
   const sym = it.s.split(':')[1] || ''; return sym.replace(/(USDT|USDC|FDUSD|USD|BTC|ETH)$/, '') || sym; }
 const TVLOGO = 'https://s3-symbol-logo.tradingview.com/';
@@ -923,7 +925,7 @@ const LOGO_FIX = {   // symbols whose logo isn't at the usual address
   'USDT.D': TVLOGO + 'crypto/XTVCUSDT--big.svg', 'BTC.D': TVLOGO + 'crypto/XTVCBTC--big.svg',
   'TOTAL': TVLOGO + 'crypto-total-market-cap--big.svg', 'TOTAL3': TVLOGO + 'crypto-total-market-cap--big.svg',
   'BR1!': TVLOGO + 'crude-oil--big.svg',
-  'DXY': TVLOGO + 'indices/u-s-dollar-index--big.svg', 'SP500': TVLOGO + 'indices/s-and-p-500--big.svg', 'NDX': TVLOGO + 'indices/nasdaq-100--big.svg', 'IXIC': TVLOGO + 'indices/nasdaq-composite--big.svg', 'GOLD': TVLOGO + 'metal/gold--big.svg', 'SILVER': TVLOGO + 'metal/silver--big.svg',
+  'DXY': TVLOGO + 'indices/u-s-dollar-index--big.svg', 'SP500': TVLOGO + 'indices/s-and-p-500--big.svg', 'NDX': TVLOGO + 'indices/nasdaq-100--big.svg', 'IXIC': TVLOGO + 'indices/nasdaq-composite--big.svg', 'GOLD': TVLOGO + 'metal/gold--big.svg', 'SILVER': TVLOGO + 'metal/silver--big.svg', 'NVDA': TVLOGO + 'nvidia--big.svg',
   'WAL': 'https://coin-images.coingecko.com/coins/images/54914/large/Walrus_Token_Full_Color_200x200.png',
 };
 function logoUrls(it, b){
@@ -970,13 +972,13 @@ function okxInst(it){
 }
 // Symbols the browser can't load itself (no CORS); the sync worker builds the candles (/bars)
 const PROXY = {'CRYPTOCAP:USDT.D':'USDT.D', 'NASDAQ:NDX':'NDX', 'NASDAQ:IXIC':'IXIC', 'TVC:NDX':'NDX', 'TVC:IXIC':'IXIC',
-  'TVC:GOLD':'GOLD', 'OANDA:XAUUSD':'GOLD', 'COMEX:GC1!':'GOLD', 'TVC:SILVER':'SILVER', 'OANDA:XAGUSD':'SILVER', 'COMEX:SI1!':'SILVER',
+  'TVC:GOLD':'GOLD', 'OANDA:XAUUSD':'GOLD', 'COMEX:GC1!':'GOLD', 'TVC:SILVER':'SILVER', 'NASDAQ:NVDA':'NVDA', 'NVDA':'NVDA', 'OANDA:XAGUSD':'SILVER', 'COMEX:SI1!':'SILVER',
   'CRYPTOCAP:BTC.D':'BTC.D', 'CRYPTOCAP:ETH.D':'ETH.D', 'CRYPTOCAP:TOTAL':'TOTAL', 'CRYPTOCAP:TOTAL2':'TOTAL2', 'CRYPTOCAP:TOTAL3':'TOTAL3',
   'CAPITALCOM:DXY':'DXY', 'TVC:DXY':'DXY', 'RUS:BR1!':'BRENT', 'TVC:UKOIL':'BRENT', 'ICEEUR:BRN1!':'BRENT', 'TVC:USOIL':'WTI', 'NYMEX:CL1!':'WTI',
   'OANDA:SPX500USD':'SPX', 'SP:SPX':'SPX', 'TVC:SPX':'SPX'};
 const CMC_SYMS = new Set(['USDT.D', 'BTC.D', 'ETH.D', 'TOTAL', 'TOTAL2', 'TOTAL3']);   // no volume, value is % or USD cap
 const noVol = it => CMC_SYMS.has(proxyOf(it));
-const PROXY_SRC = {'USDT.D':['CoinMarketCap','USDT mcap ÷ total · CoinMarketCap'], NDX:['Nasdaq','Nasdaq index · Yahoo data'], IXIC:['Nasdaq','Nasdaq index · Yahoo data'], GOLD:['COMEX','Gold futures · Yahoo data'], SILVER:['COMEX','Silver futures · Yahoo data'],
+const PROXY_SRC = {'USDT.D':['CoinMarketCap','USDT mcap ÷ total · CoinMarketCap'], NDX:['Nasdaq','Nasdaq index · Yahoo data'], IXIC:['Nasdaq','Nasdaq index · Yahoo data'], GOLD:['COMEX','Gold futures · Yahoo data'], SILVER:['COMEX','Silver futures · Yahoo data'], NVDA:['Nasdaq','Nvidia stock · Yahoo data'],
   'BTC.D':['CoinMarketCap','BTC dominance · CoinMarketCap'], 'ETH.D':['CoinMarketCap','ETH dominance · CoinMarketCap'], TOTAL:['CoinMarketCap','Crypto market cap · CoinMarketCap'],
   TOTAL2:['CoinMarketCap','Market cap ex BTC · CoinMarketCap'], TOTAL3:['CoinMarketCap','Market cap ex BTC & ETH · CoinMarketCap'],
   DXY:['ICE','Dollar index · Yahoo data'], BRENT:['ICE','Brent futures · Yahoo data'], WTI:['NYMEX','WTI futures · Yahoo data'], SPX:['S&P','S&P 500 index · Yahoo data']};
@@ -1482,7 +1484,7 @@ K.registerOverlay({
       const b = zoneBox(c, e); if (!inPane(b.y0 + b.h / 2, bounding)) return [];
       const tw = e.l ? e.l.length * 6.5 + 14 : 0; if (b.x1 > W - 2) { b.x1 = W - 2; b.x0 = Math.max(0, Math.min(b.x0, b.x1 - tw)); }   // keep the label inside the chart on narrow screens
       const out = [{type:'rect', attrs:{x:b.x0, y:b.y0, width:b.x1 - b.x0, height:b.h}, styles:{style:'stroke_fill', color:hexA(col, e.a || 0.14), borderColor:hexA(col, 0.8), borderSize:1, borderRadius:2}}];
-      if (e.l && inPane(b.y0 + b.h / 2, bounding)) out.push({type:'text', ignoreEvent:true, attrs:{x:b.x0 + 3, y:b.y0 + b.h / 2, text:e.l, align:'left', baseline:'middle'},
+      if (e.l && inPane(b.y0 + b.h / 2, bounding)) out.push({type:'text', ignoreEvent:true, attrs:{x:Math.max(b.x0, Math.min(4, b.x1 - tw)) + 3, y:b.y0 + b.h / 2, text:e.l, align:'left', baseline:'middle'},   // box started off-screen left: label at the left edge
         styles:{color:col, backgroundColor:'rgba(8,9,12,0.82)', borderColor:'rgba(0,0,0,0)', borderRadius:3, size:11, family:CF, weight:600, paddingLeft:3, paddingRight:3, paddingTop:2, paddingBottom:2}});
       return out;
     }
@@ -1632,7 +1634,15 @@ function autoStructure(b, k){
     if (sh && !sh.used && b[i].close > sh.v) { sh.used = true; ev.push({t: trend < 0 ? 'CHoCH' : 'BOS', up:true, from:sh, at:i}); trend = 1; }
     if (sl && !sl.used && b[i].close < sl.v) { sl.used = true; ev.push({t: trend > 0 ? 'CHoCH' : 'BOS', up:false, from:sl, at:i}); trend = -1; }
   }
-  return {lab: lab.slice(-6), trend, ev: ev.slice(-2)};
+  // a trend whose break level sits far away can still be giving back most of its last leg (no new swing
+  // confirmed yet). ret = share of the leg retraced, inval = swing whose close-through flips the trend.
+  let ret = 0, inval = null; const last = b[b.length - 1].close, le = ev[ev.length - 1];
+  if (le && trend && sh && sl) {
+    let ext = le.up ? -Infinity : Infinity; for (let i = le.at; i < b.length; i++) ext = le.up ? Math.max(ext, b[i].high) : Math.min(ext, b[i].low);
+    const base = trend > 0 ? sl.v : sh.v; inval = base;
+    if (Math.abs(ext - base) > 0) ret = Math.max(0, (trend > 0 ? ext - last : last - ext) / Math.abs(ext - base));
+  }
+  return {lab: lab.slice(-6), trend, ev: ev.slice(-2), ret, inval, weak: ret > 0.618};
 }
 function autoPatterns(b, piv, tol, sup, res, atr){
   const out = [], n = b.length, H = piv.hi, L = piv.lo, last = b[n - 1].close;
@@ -1724,7 +1734,7 @@ async function majorBars(it, fallback){
     bars = j.map(r => ({timestamp:+r[0], open:+r[1], high:+r[2], low:+r[3], close:+r[4]})); } catch {} }
   else if (okxInst(it)) { try { bars = await okxBars(okxInst(it), '1Dutc', 1000); } catch {} }
   else if (it.k === 'dex') { try { bars = (await SRC.gecko(it, '1D')).rows; } catch {} }
-  else if (proxyOf(it)) { try { bars = (await SRC.proxy(it, '1D')).rows; } catch {} }
+  else if (proxyOf(it)) { try { bars = (await SRC.proxy(it, '1D')).rows.slice(-1000); } catch {} }   // Yahoo sends 11+ years: keep the same ~4-year window crypto gets
   majorCache[key] = bars && bars.length > 60 ? bars : null;
   return majorCache[key] || fallback;
 }
@@ -1808,9 +1818,10 @@ function autoAccum(b){
   return out.slice(-2);
 }
 // DCA ladder: buy-side levels merged, best ones at least 6% apart, more size lower down
-function autoDca(last, cands){
-  const cl = [];
-  for (const x of cands.filter(x => x.v < last * 0.985 && x.v > last * 0.25).sort((a, c) => c.v - a.v)) {
+function autoDca(last, cands, vol){
+  // how deep a ladder may go follows the asset's own swings: gold/indices ~-30-40%, alts down to -75%
+  const floor = last * (1 - (vol ? Math.min(0.75, Math.max(0.3, vol * 1.6)) : 0.75)), cl = [];
+  for (const x of cands.filter(x => x.v < last * 0.985 && x.v > floor).sort((a, c) => c.v - a.v)) {
     const k = cl.find(y => Math.abs(y.v - x.v) / y.v < 0.035);
     if (k) { k.v = (k.v * k.score + x.v * x.score) / (k.score + x.score); k.score += x.score; if (!k.why.includes(x.why)) k.why.push(x.why); }
     else cl.push({v:x.v, score:x.score, why:[x.why]});
@@ -1818,6 +1829,8 @@ function autoDca(last, cands){
   cl.sort((a, d) => d.score - a.score);
   const near = cl.find(c => c.v >= last * 0.75), pick = near ? [near] : [];   // first buy close to price when there is a level for it
   for (const c of cl) { if (pick.length >= 4) break; if (c === near) continue; if (pick.some(p => Math.abs(p.v - c.v) / p.v < 0.08)) continue; pick.push(c); }
+  // a one-buy "ladder" is no plan: after a big drop the levels left below can sit closer than 8%, take one at 5%
+  if (pick.length === 1) for (const c of cl) { if (pick.length >= 2) break; if (!pick.includes(c) && pick.every(p => Math.abs(p.v - c.v) / p.v >= 0.05)) pick.push(c); }
   if (!pick.length) return null;
   pick.sort((a, c) => c.v - a.v);
   const W = {1:[100], 2:[40,60], 3:[25,35,40], 4:[15,20,30,35]}[pick.length];
@@ -1892,6 +1905,7 @@ function drawTp(last, cands, tEnd, add, pctAway, tagOff, atr){
 // long-term (investing) levels from daily history: major levels, cycle low, 200-day / 50-week averages,
 // fib of the big cycle move, all-time high and extensions above it
 function autoLongCands(mb, last){
+  if (mb.length > 1000) mb = mb.slice(-1000);   // same ~3-4 year window for stocks/metals (Yahoo sends 11 years) as for crypto (Binance 1000 days)
   const n = mb.length, buy = [], up = []; if (n < 30) return {buy, up};
   let hiI = 0; for (let i = 0; i < n; i++) if (mb[i].high > mb[hiI].high) hiI = i;
   const ath = mb[hiI].high;
@@ -1909,12 +1923,15 @@ function autoLongCands(mb, last){
     let cl = hiI; for (let i = hiI; i < n; i++) if (mb[i].low < mb[cl].low) cl = i;
     if (cl > hiI && last < ath * 0.7) { const D = ath - mb[cl].low; for (const [f, s] of [[0.382, 1.5], [0.5, 1.7], [0.618, 1.7]]) up.push({v:mb[cl].low + D * f, score:s, why:'fib ' + f + ' of the drop from the top'}); }
   }
-  return {buy, up, days:n};
+  // yearly volatility from daily closes (log returns), used to size the DCA ladder
+  let s1 = 0, s2 = 0, m = 0; for (let i = Math.max(1, n - 365); i < n; i++) { const r = Math.log(mb[i].close / mb[i - 1].close); if (isFinite(r)) { s1 += r; s2 += r * r; m++; } }
+  const vol = m > 20 ? Math.sqrt(Math.max(0, s2 / m - (s1 / m) ** 2) * 300) : 0;
+  return {buy, up, days:n, vol};
 }
 let autoPlan = null, autoSum = {};
-function drawDca(last, cands, tEnd, add, pctAway, tagOff, atr){
+function drawDca(last, cands, tEnd, add, pctAway, tagOff, atr, vol){
   autoPlan = null;
-  const d = autoDca(last, cands); if (!d) return;
+  const d = autoDca(last, cands, vol); if (!d) return;
   autoDC = 'buy';
   d.steps.forEach((s, j) => autoBoxAt(s.v, 'DCA ' + (j + 1) + ' ' + s.w + '% ' + pctAway(s.v), AUTO.dca, tEnd, add));
   // stop-loss: just under the next level below the last buy, or a bit under the last buy if there is none close
@@ -1936,9 +1953,13 @@ function drawDca(last, cands, tEnd, add, pctAway, tagOff, atr){
   autoInfo.push({c:AUTO.res, t:'Stop-loss ' + fmtNum(stop), d:fmtPct((stop - d.avg) / d.avg * 100) + ' from your average entry' + (under ? ', just under the next support' : ''), dca:true, stopRow:true});
 }
 const PAT_BULL = /bottom|Inverse|Bull flag|Falling wedge|Ascending triangle/, PAT_BEAR = /Double top|^Head|Bear flag|Rising wedge|Descending triangle/;
-const targetAhead = (p, last) => isFinite(p.target) && p.target > 0 && !/Range|channel|Broadening/.test(p.name) && !(PAT_BEAR.test(p.name) && p.target >= last) && !(PAT_BULL.test(p.name) && p.target <= last);
-const targetHit = (p, last) => isFinite(p.target) && p.target > 0 && ((PAT_BEAR.test(p.name) && p.target >= last) || (PAT_BULL.test(p.name) && p.target <= last));
-let autoInfo = [], autoDefs = [], autoBias = '';
+// reached = price traded through the target at any point after the pattern finished (a wick counts), not only the last price
+const targetReach = (p, last, b) => { let lo = last, hi = last; const pts = [...(p.peaks || []), ...(p.shoulders || [])];
+  if (b && pts.length) for (let i = Math.max(...pts.map(q => q.i)) + 1; i < b.length; i++) { lo = Math.min(lo, b[i].low); hi = Math.max(hi, b[i].high); }
+  return (PAT_BEAR.test(p.name) && p.target >= lo) || (PAT_BULL.test(p.name) && p.target <= hi); };
+const targetAhead = (p, last, b) => isFinite(p.target) && p.target > 0 && !/Range|channel|Broadening/.test(p.name) && !targetReach(p, last, b);
+const targetHit = (p, last, b) => isFinite(p.target) && p.target > 0 && targetReach(p, last, b);
+let autoInfo = [], autoDefs = [], autoBias = '', autoWeak = 0;
 const AUTO_CATS = [
   ['buy', 'Long-term DCA + stop', AUTO.dca], ['tp', 'Long-term targets', AUTO.tp], ['bz', 'Buy zones', AUTO.buy],
   ['lv', 'Support and resistance', AUTO.sup], ['deep', 'Long-term levels', AUTO.sup], ['acc', 'Accumulation', AUTO.acc],
@@ -1946,7 +1967,7 @@ const AUTO_CATS = [
 // everything is always analysed (and listed in the panel); the chips only pick what gets drawn on the chart
 const AUTO_ALL = {lv:1, tl:1, ms:1, fib:1, pat:1, buy:1};
 let autoDC = 'lv';   // category of what is being drawn right now
-function clearAuto(){ autoSum = {}; const tb = $('#atip'); if (tb) tb.hidden = true; tipFor = null; autoSeq++; chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; renderAutoInfo(); }
+function clearAuto(){ autoSum = {}; const tb = $('#atip'); if (tb) tb.hidden = true; tipFor = null; autoSeq++; chart.removeOverlay({groupId:'auto'}); autoInfo = []; autoDefs = []; autoBias = ''; autoWeak = 0; renderAutoInfo(); }
 let autoAt = 0, autoPx = 0, autoAtrNow = 0;
 function autoLiveTick(bar, isNew){
   if (!M().auto) return;
@@ -1984,13 +2005,15 @@ function runAuto(){
   const tagOff = v => { const y = v * pxPerPrice; const hit = tagYs.filter(o => Math.abs(o.y - y) < 19); const off = hit.length ? Math.max(...hit.map(o => o.off)) + 136 : 0; tagYs.push({y, off}); return off; };
   // market structure sets the trend read for the panel header
   const ms = autoStructure(b, Math.max(4, Math.round(n / 45)));
-  autoBias = ms.trend > 0 ? 'Uptrend' : ms.trend < 0 ? 'Downtrend' : '';
+  autoBias = ms.trend > 0 ? 'Uptrend' : ms.trend < 0 ? 'Downtrend' : ''; autoWeak = ms.weak ? ms.ret : 0;
   if (cat.ms !== false) { autoDC = 'ms';
     for (const p of ms.lab) if (!taken.has(p.i)) add('autoMark', [pt(p.i, p.v)], p.t[0] === 'H' ? AUTO.sup : AUTO.res, {l:p.t, up:!!p.h});
     for (const e of ms.ev) add('autoLine', [pt(e.from.i, e.from.v), pt(e.at, e.from.v)], e.up ? AUTO.sup : AUTO.res, {l:e.t, seg:1, d:1, w:1});
     const e = ms.ev[ms.ev.length - 1];
     autoInfo.push({c: ms.trend > 0 ? AUTO.sup : ms.trend < 0 ? AUTO.res : AUTO.trend, t:'Structure: ' + (autoBias || 'no clear trend'),
       d: e ? e.t + (e.up ? ' up' : ' down') + ' at ' + fmtNum(e.from.v) + (e.at > n - 6 ? ', just now' : '') : ms.lab.slice(-2).map(x => x.t).join(', ')});
+    if (ms.inval) autoInfo.push({c: ms.weak ? AUTO.pat : AUTO.trend, t:(ms.weak ? 'Deep pullback: ' + Math.round(ms.ret * 100) + '% of the last leg given back' : 'Trend holds'),
+      d:'flips ' + (ms.trend > 0 ? 'down on a close below ' : 'up on a close above ') + fmtNum(ms.inval) + ' (' + pctAway(ms.inval) + ')'});
   }
   const allLv = autoLevels(b, piv, tol, last, atr), nearLv = cat.lv ? allLv : [];
   let fibZ = null;
@@ -2033,9 +2056,9 @@ function runAuto(){
     if (p.flag) { const f = p.flag;
       add('autoLine', [pt(f.s, b[f.s].close), pt(f.e, b[f.e].close)], AUTO.pat, {l:p.name, seg:1, w:2});
       add('autoShade', [pt(f.e + 1, f.hi), pt(n - 1, f.hi), pt(n - 1, f.lo), pt(f.e + 1, f.lo)], AUTO.pat, {}); }
-    if (targetAhead(p, last))
+    if (targetAhead(p, last, b))
       add('autoTarget', [pt(n - 1, p.target)], AUTO.pat, {l:'Target ' + fmtNum(p.target) + '  ' + pctAway(p.target)});
-    autoInfo.push({c:AUTO.pat, t:p.name, d:p.why + (targetHit(p, last) ? ' (target already reached)' : ''), pat:true});
+    autoInfo.push({c:AUTO.pat, t:p.name, d:p.why + (targetHit(p, last, b) ? ' (target already reached)' : ''), pat:true});
   }
   renderAutoInfo();
   if (cat.lv || buyC) {   // deep levels from long history arrive a moment later (the DCA ladder waits for them)
@@ -2053,7 +2076,7 @@ function runAuto(){
       }
       // long-term DCA and targets come last so they can join a level already drawn at the same price
       if (buyC) { const LT = autoLongCands(mb && mb.length >= 60 ? mb : all, last);
-        drawDca(last, LT.buy, tEnd, add, pctAway, tagOff, 0);
+        drawDca(last, LT.buy, tEnd, add, pctAway, tagOff, 0, LT.vol);
         drawTp(last, LT.up, tEnd, add, pctAway, tagOff, Infinity); }
       renderAutoInfo();
     });
@@ -2092,7 +2115,7 @@ async function autoThin(all, it){
   const tagOff = v => { const y = v * ppp; const hit = tagYs.filter(o => Math.abs(o.y - y) < 19); const off = hit.length ? Math.max(...hit.map(o => o.off)) + 136 : 0; tagYs.push({y, off}); return off; };
   autoInfo.push({c:AUTO.trend, t:'New pair: read from the ' + used + ' chart', d:n + ' candles'});
   const ms = autoStructure(b, Math.max(4, Math.round(n / 45)));
-  autoBias = ms.trend > 0 ? 'Uptrend' : ms.trend < 0 ? 'Downtrend' : '';
+  autoBias = ms.trend > 0 ? 'Uptrend' : ms.trend < 0 ? 'Downtrend' : ''; autoWeak = ms.weak ? ms.ret : 0;
   if (cat.ms !== false) { const e = ms.ev[ms.ev.length - 1];
     autoInfo.push({c: ms.trend > 0 ? AUTO.sup : ms.trend < 0 ? AUTO.res : AUTO.trend, t:'Structure: ' + (autoBias || 'no clear trend'), d: e ? e.t + (e.up ? ' up' : ' down') + ' at ' + fmtNum(e.from.v) : ''}); }
   const near = autoLevels(b, piv, tol, last, atr), deep = autoMajor(b, last, near.map(l => l.v));
@@ -2103,7 +2126,7 @@ async function autoThin(all, it){
   if (cat.buy !== false) {
     const c = drawBuy(b, last, atr, ts, add, tagOff, pctAway, near, fibZ, ' (' + used + ')');
     const LT = autoLongCands(b, last);   // a new pair has no long history: use its whole life
-    drawDca(last, LT.buy, tN, add, pctAway, tagOff, 0);
+    drawDca(last, LT.buy, tN, add, pctAway, tagOff, 0, LT.vol);
     drawTp(last, LT.up, tN, add, pctAway, tagOff, Infinity);
   }
   if (cat.lv) {
@@ -2131,8 +2154,8 @@ async function autoThin(all, it){
   if (cat.pat) {
     const sup = autoTrend(b, piv.lo, tol, 'lo', atr), res = autoTrend(b, piv.hi, tol, 'hi', atr);
     for (const p of autoPatterns(b, piv, tol, sup, res, atr)) {
-      if (targetAhead(p, last)) add('autoTarget', [{timestamp:tN, value:p.target}], AUTO.pat, {l:'Target ' + fmtNum(p.target) + '  ' + pctAway(p.target)});
-      autoInfo.push({c:AUTO.pat, t:p.name, d:p.why + ' (' + used + ')' + (targetHit(p, last) ? ', target already reached' : ''), pat:true});
+      if (targetAhead(p, last, b)) add('autoTarget', [{timestamp:tN, value:p.target}], AUTO.pat, {l:'Target ' + fmtNum(p.target) + '  ' + pctAway(p.target)});
+      autoInfo.push({c:AUTO.pat, t:p.name, d:p.why + ' (' + used + ')' + (targetHit(p, last, b) ? ', target already reached' : ''), pat:true});
     }
   }
   renderAutoInfo();
@@ -2142,7 +2165,8 @@ function renderAutoInfo(){
   if (!M().auto || mode !== 'kc') { box.hidden = true; return; }
   const pats = autoInfo.filter(x => x.pat || x.alert);
   const X = invX();
-  const bias = autoBias ? h('em', {class:'ai-b ' + ((autoBias === 'Uptrend') !== !!X ? 'up' : 'down'), text:(autoBias === 'Uptrend' ? '▲ ' : '▼ ') + autoBias + (X ? ' · ' + X.toLowerCase() + (autoBias === 'Uptrend' ? ' weak' : ' strong') : '')}) : null;
+  const bias = autoBias && autoWeak ? h('em', {class:'ai-b warn', title:Math.round(autoWeak * 100) + '% of the last ' + (autoBias === 'Uptrend' ? 'rally' : 'drop') + ' given back, trend not broken yet', text:(autoBias === 'Uptrend' ? '▲ Uptrend · deep pullback' : '▼ Downtrend · strong bounce') + (X ? ' · ' + X.toLowerCase() + ' ' + (autoBias === 'Uptrend' ? 'recovering' : 'fading') : '')})
+    : autoBias ? h('em', {class:'ai-b ' + ((autoBias === 'Uptrend') !== !!X ? 'up' : 'down'), text:(autoBias === 'Uptrend' ? '▲ ' : '▼ ') + autoBias + (X ? ' · ' + X.toLowerCase() + (autoBias === 'Uptrend' ? ' weak' : ' strong') : '')}) : null;
   box.append(h('div', {class:'ai-h'}, h('b', {text:'Auto'}), bias, h('span', {text: pats.map(p => p.t).join(' · ') || (autoBias ? '' : 'No clear trend')}),
     h('button', {class:'ai-g', title:'Choose what to show', svg:svg(ICON.gear), onclick:e => autoMenu(e.currentTarget)}),
     h('button', {title:'Details', svg:svg(ICON.chev), onclick:() => box.classList.toggle('open')})));
